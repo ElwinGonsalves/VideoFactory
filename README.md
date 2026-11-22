@@ -19,7 +19,7 @@ Then add your Gemini key in **Settings** and render `projects/concept-001` from 
 
 | Module | Entry point | Does |
 | --- | --- | --- |
-| Web UI | `ui/server.py` | Create · Ideas · Library (preview, QA frames, metadata, upload) · Schedule · Settings (keys, logins, health) |
+| Web UI | `ui/server.py` | Create · Ideas · Batch · Library (player, QA, metadata, publish) · Schedule (pre-flight, builder) · Settings (keys, platform logins, alerts, spend limit) |
 | Orchestrator | `make_video.py` | voice → music + SFX → route → visual QA → render → thumbnail + metadata |
 | Language model | `llm/` | Gemini / Ollama / OpenAI-compatible: ideas, scripts, titles, hashtags, reading reference frames |
 | Analyzer | `analyzer/analyze_reference.py` | Reference links → contact sheets, transcript, shot pacing, vision → `style_blueprint.json` → 5 ideas → approval |
@@ -37,7 +37,8 @@ Then add your Gemini key in **Settings** and render `projects/concept-001` from 
 - [FIRST_VIDEO_GUIDE.md](docs/FIRST_VIDEO_GUIDE.md): first render, the UI, keys, cookie login, test upload
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): data flow, folder map, every JSON/YAML schema, UI security
 - [DEBUGGING.md](docs/DEBUGGING.md): FFmpeg, TTS, GPU, Remotion, LLM, yt-dlp, engines, ducking, cookies
-- [SCHEDULER.md](docs/SCHEDULER.md): batches, caps, running at startup, inspecting state
+- [SCHEDULER.md](docs/SCHEDULER.md): pre-flight, builder, gate, caps, running at startup, inspecting state
+- [BATCH_SHEETS.md](docs/BATCH_SHEETS.md): Excel / CSV / Google Sheets batches
 - [ADDING_STYLES.md](docs/ADDING_STYLES.md): blueprints from reference videos, scene types, transitions, engines, skills
 
 ## Development

@@ -1,6 +1,6 @@
 # Upgrade plan v2 (handoff for a fresh agent session)
 
-Status: **not started**. The current code is on `main` at https://github.com/ElwinGonsalves/VideoFactory.
+Status: **implemented** (sections 1-9, one commit per section; see `git log`). Remaining notes are at the end of this file. The current code is on `main` at https://github.com/ElwinGonsalves/VideoFactory.
 Read `docs/ARCHITECTURE.md` first, then this file. Work through the sections in order and commit
 atomically per section (`feat(ui): ...`, `feat(batch): ...`, ...).
 
@@ -71,3 +71,9 @@ atomically per section (`feat(ui): ...`, `feat(batch): ...`, ...).
 - Audio: `audio_pipeline/{make_voice_and_subs,mix_music_and_sfx,sfx}.py` (SFX are synthesized into `audio_pipeline/sfx_library/*.wav`, which is gitignored today; v2 adds a committed `manifest.json`).
 - Scheduler/publisher: `scheduler/run_scheduler.py` (`state.sqlite`: jobs/uploads/events/posts), `publisher/{publish,official_apis,post_log}.py`.
 - Tests: `tests/` (37 passing). Checks: `scripts/doctor.py`, `scripts/smoke_test.py`.
+
+## Status after implementation
+- Done: all nine sections. Verified with `scripts/doctor.py`, `scripts/smoke_test.py`, `ruff check` / `ruff format --check`, `pytest` and `npx tsc --noEmit`.
+- Not verified here (needs your accounts or a long unattended run): real Google Search grounding on a paid key, Instagram/TikTok official API calls, Telegram/Discord delivery, a real overnight batch, and the Windows keep-awake effect over hours.
+- `ui/static` is exercised through the API and syntax checks, not a browser test run.
+- Follow-ups worth considering: move the project outside OneDrive; per-aspect outputs (re-rendering 16:9 or 9:16 replaces the current file).

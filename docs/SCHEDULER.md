@@ -4,7 +4,7 @@
 
 ## Add jobs
 
-The easiest way is the UI **Schedule** tab: pick a project, times and platforms, **Add to schedule**, and switch **daemon running** on (the daemon then runs while the UI is open; for always-on, use a startup task below). Each job has an **on** toggle (`enabled` in the YAML), **Run now**, **Retry** and delete.
+The easiest way is the UI **Schedule** tab (below). Each queue card has **Pause / Resume** (`enabled` in the YAML), **Run Now**, **Retry** and **Remove**.
 
 You can also edit `schedule.yaml` directly, or use the CLI (it appends to the YAML):
 
@@ -14,6 +14,21 @@ You can also edit `schedule.yaml` directly, or use the CLI (it appends to the YA
   --generate-at 2026-11-24T08:00:00+05:30 --upload-at 2026-11-24T18:00:00+05:30 `
   --platforms youtube,instagram
 ```
+
+## The Schedule tab
+**Pre-Flight bar**
+- **Scheduler Daemon** ON/OFF. The daemon runs while the UI is open; for always-on use a startup task below.
+- **Keep PC Awake**: while any render or upload is pending or running, the daemon asks Windows not to sleep (`SetThreadExecutionState(0x80000001)` from one long-lived thread) and releases it (`0x80000000`) when the queue is empty. No effect on macOS/Linux.
+- **Safe-Publish Gate**: a video with unverified facts (see `claims` in `script.json`) is still rendered, but its upload is held as `needs_review`. Check the facts in the Library, then press **Approve upload** on its queue card. Switch the gate off to upload everything.
+- **Auth badges** for YouTube / Instagram / TikTok (checked / not checked). **Check** runs a session check now.
+
+**Session check before each upload.** 5 to 10 minutes before an upload is due (`scheduler.pre_check_minutes`, default 7) the cookie session or API credentials are checked. If they have expired, that platform's queue is paused once (a single `platform_paused` event, no retry loop) and its uploads wait. Reconnect in Settings or press **Check** in the Pre-Flight bar; a successful check resumes the queue.
+
+**Schedule Builder.** Pick videos by title, the first upload (*Now*, *Tonight 11:00 PM*, or a picker) and the spacing (30 min, 45 min, 1 hr, 2 hr, 4 hr, custom such as `90m`). A live preview shows the times in words ("Today 11:45 PM"). Rendering is either *auto-generate N min before each upload* or *generate all now, upload staggered*. Videos that are already rendered become `upload_only` jobs.
+
+**Queue cards** show the times in words and the steps Queued, Rendering, Uploading, Published (with a link when one is known).
+
+Alerts to Telegram or Discord (Settings) are sent when a generation or upload fails, a platform is paused, a video is held, or a batch finishes.
 
 Job types:
 
@@ -47,6 +62,9 @@ Times without an offset are read in `defaults.timezone`.
 .venv\Scripts\python scheduler\run_scheduler.py retry netflix-dvd    # re-queue failed parts
 .venv\Scripts\python scheduler\run_scheduler.py daemon               # run continuously
 ```
+
+`python scheduler\run_scheduler.py check-auth youtube` checks one platform from the terminal and resumes its queue when it passes.
+Weekly analytics (Settings > Analytics) run from the same daemon on Mondays at 09:00.
 
 ## Rules
 

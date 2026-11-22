@@ -14,13 +14,32 @@ Start with the two scripts:
 | Narration, captions, timing, mix | `projects/<slug>/assets/` |
 | Remotion props for the run | `projects/<slug>/props.json` |
 | QA stills (hook/early/mid/outro) | `projects/<slug>/qa/*.png` |
-| Final video + metadata | `output/<slug>.mp4`, `output/<slug>.meta.json` |
+| Final video, thumbnail, metadata | `output/<project_id>/<project_id>.mp4`, `.thumb.jpg`, `.meta.json` |
+| Library index, idea history, analytics, Gemini token log | `data/projects.db` |
 | Assets Remotion reads | `studio/public/assets/<slug>/` |
 | Scheduler log (JSON lines) | `scheduler/logs/scheduler.log` |
 | Scheduler state | `scheduler/state.sqlite` |
 | TTS / music / media caches | `audio_pipeline/cache/`, `media_pipeline/cache/` |
 
 Delete a cache folder to force regeneration. Nothing in the caches is needed for correctness.
+
+## Keep the project outside OneDrive
+Renders write thousands of files and SQLite (`scheduler/state.sqlite`, `data/projects.db`) needs reliable file locks. OneDrive syncs and locks files while they are written, which shows up as `PermissionError` on rename, `database is locked`, or a render that stalls. Move the whole folder to a non-synced path such as `C:\dev\video-factory` (copy it, run `python scripts\doctor.py`, delete the old one). `doctor.py` lists this as an optional check. If you must stay, `common.safe_replace` retries renames, but expect occasional slowness.
+
+## UI errors
+| Message in the UI | Meaning and fix |
+| --- | --- |
+| **Server not reachable.** Is `python ui/server.py` running? | The page cannot connect. Start the server again and reload the tab. |
+| **The server did not answer within 30 s.** | Calls time out after 30 s (uploads 120 s). The server is probably busy; heavy work runs as background jobs, so retry and watch the log panel. |
+| A message plus a grey hint (HTTP 4xx/5xx) | The API always answers `{detail, hint}`. 401 means the page is from an old server run: reload. 500 means a bug: the full traceback is in the console running `ui/server.py`. |
+| Library video does not play | The player uses `GET /api/projects/<id>/stream` (HTTP 206). Check `Accept-Ranges: bytes` in the browser's network tab. One `<video>` exists at a time, so the browser's 6-connections-per-host limit is no longer exhausted. |
+
+Cross-origin calls are accepted only from `http://127.0.0.1:<port>` and `http://localhost:<port>`, and every call still needs the per-launch token.
+
+## Gemini grounding, tokens and spend
+- **Google Search grounding is not on the free tier.** The script is written without it and every numeric claim is `verified: false`; the Safe-Publish Gate then holds the upload until you approve it.
+- Each Gemini call is logged to `llm_usage` in `data/projects.db` (input and output tokens; thinking tokens count as output). Settings shows this month's estimate in rupees. Choose *Paid* and a stop limit (default Rs 100) to make batches pause cleanly when it is reached; the free tier costs Rs 0 and is not limited here. Prices per model and the USD to INR rate are editable. `sqlite3 data\projects.db "SELECT model, SUM(input_tokens), SUM(output_tokens) FROM llm_usage GROUP BY model"`.
+- Token field names on the `interactions` endpoint are not documented; they are parsed defensively and count as 0 when absent.
 
 ## FFmpeg and codec errors
 

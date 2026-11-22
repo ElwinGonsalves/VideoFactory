@@ -216,6 +216,39 @@ def check_assets() -> None:
         )
 
 
+def check_v2() -> None:
+    """Checks for the v2 upgrade: batch sheets, new visuals, SFX manifest, output layout, data folder."""
+    from audio_pipeline import sfx
+
+    check(
+        "py: openpyxl (Batch .xlsx)",
+        importlib.util.find_spec("openpyxl") is not None,
+        hint="pip install -r requirements.txt",
+    )
+    nm = STUDIO / "node_modules"
+    for pkg in ("roughjs", "lucide-react"):
+        check(f"studio: {pkg} (sketch / icon visuals)", (nm / pkg).exists(), hint="cd studio; npm install")
+    manifest = sfx.MANIFEST
+    names = {c["name"] for c in read_json(manifest).get("sfx", [])} if manifest.exists() else set()
+    missing = [n for n in sfx.REQUIRED if n not in names]
+    check("sfx manifest (whoosh, pop, paper_flip, chalk_draw, riser)", not missing,
+          f"{len(names)} clips" if not missing else "missing: " + ", ".join(missing),
+          hint="python -c \"from audio_pipeline import sfx; sfx.ensure_library()\"")  # fmt: skip
+    flat = list((ROOT / "output").glob("*.meta.json"))
+    check("output layout (output/<project_id>/)", not flat, f"{len(flat)} v1 file set(s) still flat" if flat else "",
+          hint="python scripts/migrate_output.py --dry-run, then without --dry-run (back up first)")  # fmt: skip
+    try:
+        from common import db
+
+        with db.connect() as conn:
+            n = conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
+        check("data/projects.db", True, f"{n} project(s)")
+    except Exception as exc:  # noqa: BLE001
+        check("data/projects.db", False, str(exc)[:80], hint="the folder must be writable and not locked by OneDrive")
+    check("project outside OneDrive", "onedrive" not in str(ROOT).lower(), str(ROOT), required=False,
+          hint="OneDrive locks files during renders and SQLite writes; move the folder to e.g. C:\\dev\\video-factory")  # fmt: skip
+
+
 def check_publisher() -> None:
     sau = ROOT / "publisher" / "social-auto-upload"
     check(
@@ -255,6 +288,7 @@ def main() -> int:
     check_studio()
     check_music()
     check_assets()
+    check_v2()
     check_publisher()
     width = max(len(r[1]) for r in results)
     failed_required = 0

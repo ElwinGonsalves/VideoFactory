@@ -6,7 +6,7 @@ video-factory turns a prompt, a `script.json`, a scheduled job, or reference vid
 
 ```text
                      ┌──────────── ui/server.py (127.0.0.1, token) ───────────┐
-                     │ Create · Ideas · Library · Schedule · Settings · logs  │
+                     │ Create · Ideas · Batch · Library · Schedule · Settings  │
                      └──────────────┬─────────────────────────────────────────┘
                                     │ runs each action as a logged subprocess (ui/jobs.py)
  reference URLs ──► analyzer/analyze_reference.py ──► contact sheets, transcript, scenes.csv
@@ -23,8 +23,8 @@ video-factory turns a prompt, a `script.json`, a scheduled job, or reference vid
    2 audio_pipeline/mix_music_and_sfx.py    mood track + sfx.auto_cues ─► mixed_master.wav (-14 LUFS)
    3 pipeline/router.py                     style ─► engine, composition, transition, look
    4 pipeline/render.py + pipeline/qa.py    cover + 4 stills, pixel checks ─► qa/report.json
-   5 Remotion (studio/) or engines/*        ─► output/<slug>.mp4 (H.264 yuv420p + AAC, faststart)
-   6 pipeline/thumbnail.py + llm.tasks      ─► output/<slug>.thumb.jpg, output/<slug>.meta.json
+   5 Remotion (studio/) or engines/*        ─► output/<id>/<id>.mp4 (H.264 yuv420p + AAC, faststart)
+   6 pipeline/thumbnail.py + llm.tasks      ─► output/<id>/<id>.thumb.jpg, .meta.json
                                     │
    publisher/publish.py ── cookie (social-auto-upload) | api (official_apis.py) ──► YouTube / Instagram / TikTok
                        └── publisher/post_log.py: daily caps + post history (scheduler/state.sqlite)
@@ -51,11 +51,34 @@ Audio is the master clock: scene start/end times in `timing.json` come from the 
 | `scripts/` | `doctor.py`, `smoke_test.py`, `bootstrap.py`, `setup_repos.ps1/.sh`, `seed_music.py`, `install_skills.py`, `fetch_geo.py` |
 | `.agent/skills/` | 69 SKILL.md files from 12 zero-API packs |
 | `.kiro/steering/` | Rules Kiro follows; `.kiro/settings/mcp.json` (local) wires the handanim MCP server |
-| `projects/<slug>/` | `script.json` (committed); `assets/`, `qa/`, `props.json` (ignored) |
-| `output/` | MP4, thumbnail, `.meta.json` (ignored) |
+| `projects/<id>/` | `script.json` (committed); `assets/`, `qa/`, `props.json` (ignored) |
+| `output/<id>/` | `<id>.mp4`, `<id>.thumb.jpg`, `<id>.meta.json` (ignored). `common/paths.py` resolves them and falls back to the v1 flat layout |
+| `data/projects.db` | Library index, idea history, published URLs, analytics, Gemini token log (ignored) |
+| `prompts/` | `script_templates.py`: `ScriptTemplateRegistry` with per-style beats |
+| `batch/` | `sheet.py` (xlsx/csv/Google Sheets), `run.py` (one video at a time) |
 | `config/` | `settings.json` preferences, `secrets/` OAuth files (ignored) |
 
 Gitignored and recreated by `python scripts/bootstrap.py`: `.venv`, `node_modules`, vendored repos (`engines/openmontage`, `engines/explainroo`, `engines/clipper`, `publisher/social-auto-upload`), music MP3s, textures, the SFX library, caches, logs, `.env`, `config/`, cookies.
+
+## v2 additions
+
+**Project ids.** `common/slugs.py` builds 3 to 5 word kebab-case ids from the video **title only** and de-duplicates with `-2`, `-3`.
+
+**Script templates** (`prompts/script_templates.py`). `REGISTRY.for_style(style, blueprint)` returns the native beats and visual hints: `concept`/`case_study` (Hook, Mechanism, Case Study, Takeaway Loop), `vox_documentary` (Cold Open, Archival/Map Context, Turning Point, Editorial Synthesis), `whiteboard`/`hand_drawn` (Problem Sketch, Step-by-Step Draw Cues, Recap), `stickman` (Character Setup, Escalation, Punchline), `long_form` (16:9, Hook, Intro, chapters, Summary & CTA) and `reference_blueprint` (beats read from `analyzer/blueprints/<style>.json`).
+
+**Create modes.** *From Idea* calls `llm.tasks.write_script`. *From Script* calls `script_from_text`: `split_narration` cuts the user's text into scenes without changing a word and the model only returns visuals. `script.json` gains `grounded`, `sources` and `claims` (`{text, scene, verified, sources}`). Without Google Search grounding (free tier) every numeric claim is `verified: false`; `facts_to_verify` lists the unverified ones.
+
+**Concrete visuals.** `pipeline/visuals.py` upgrades text-only scenes (headline, bullets, quote) per look, and the Remotion templates draw an illustration for every type even if the validator was bypassed. Visual types: `stat`, `counter`, `chart`, `flow`, `diagram`, `sketch`, `cutout`, `timeline`, `stickman`, `image` (Ken Burns), `map`, plus text-first `headline`, `bullets`, `quote`. New optional fields: `icon` (name from `studio/src/components/visuals/icons.tsx`), `draw_cues`, `events`, `pose` (idle, point, shrug, run, celebrate, panic, think), `bubble`. `pipeline/qa.py` adds a *center is mostly empty* check on the middle 55% of every non-cover frame.
+
+**SFX.** `audio_pipeline/sfx_library/manifest.json` maps `whoosh`, `pop`, `paper_flip`, `chalk_draw`, `riser` (and the other clips) to locally synthesized CC0 WAVs with a measured peak. Cue level is the voice peak minus 12 dB, on scene cuts, reveals (stat, counter, chart, map, timeline, cutout, sketch, diagram) and a riser before the first case-study/turning-point scene.
+
+**Storage.** Files live in `output/<id>/`; `data/projects.db` is the index (`projects`, `published`, `analytics`, `llm_usage`). The Library API is paginated (`GET /api/library?q=&style=&aspect=&page=`), one project at a time in the Inspector (`GET /api/library/<id>`), `GET /api/projects/<id>/stream` serves HTTP 206 and `GET /api/projects/<id>/download` is an attachment. `scripts/migrate_output.py` moves v1 files.
+
+**Errors and CORS.** Every API failure is `{detail, hint}`. CORS allows only `http://127.0.0.1:<port>` and `http://localhost:<port>`; the token is still required. The page times requests out (30 s, uploads 120 s) and turns network errors into "Server not reachable" messages.
+
+**Scheduler guard** (`scheduler/guard.py`, `scheduler/builder.py`): keep-awake, Safe-Publish Gate (`needs_review`), pre-upload session checks with per-platform pause (`auth`, `platform_pause` tables in `state.sqlite`), and the relative-spacing builder.
+
+**Spend guard** (`llm/usage.py`): tokens per call, estimated Rs from per-model prices and a USD to INR rate, monthly stop limit that pauses batches. **Alerts** (`common/notify.py`): Telegram and Discord.
 
 ## Studio (Remotion)
 
@@ -160,13 +183,13 @@ Normalizers clip every string, coerce chart values to numbers, drop invalid visu
 
 Music source order: local library → Archive.org public-domain search → Wikimedia Commons (CC0 / public domain / CC BY, never NC/ND) → any local mood. Downloads are added to the manifest.
 
-### `output/<slug>.meta.json`
+### `output/<id>/<id>.meta.json`
 
 ```json
-{ "slug": "concept-001", "file": "output/concept-001.mp4", "aspect_ratio": "9:16",
+{ "slug": "concept-001", "file": "output/concept-001/concept-001.mp4", "aspect_ratio": "9:16",
   "title": "...", "title_variants": ["...", "...", "..."], "hook_variants": ["..."],
   "description": "...", "hashtags": ["#shorts", "#business"], "tags": ["..."], "pinned_comment": "...",
-  "thumbnail_text": "...", "thumbnail": "output/concept-001.thumb.jpg",
+  "thumbnail_text": "...", "thumbnail": "output/concept-001/concept-001.thumb.jpg",
   "platform_targets": ["youtube"], "visibility": "unlisted", "music_attribution": "Music: ...",
   "facts_to_verify": ["..."], "qa_ok": true, "metadata_source": "llm | user | script" }
 ```
@@ -185,8 +208,8 @@ See `docs/SCHEDULER.md`. Tables: `jobs`, `uploads`, `events`, and `posts` (share
 
 | File | Holds | In git |
 | --- | --- | --- |
-| `.env` | `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OLLAMA_HOST`, `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_USER_ID`, `TIKTOK_ACCESS_TOKEN` | no (`.env.example` is) |
-| `config/settings.json` | `llm`, `defaults` (voice, style, aspect, mood, niche, language, length), `publish` (method/account per platform), `clipper` | no |
+| `.env` | `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OLLAMA_HOST`, per platform: `YOUTUBE_CLIENT_ID/SECRET/ACCESS_TOKEN`, `INSTAGRAM_CLIENT_ID/SECRET/USER_ID/ACCESS_TOKEN`, `TIKTOK_CLIENT_KEY/SECRET/ACCESS_TOKEN`; `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `DISCORD_WEBHOOK_URL` | no (`.env.example` is) |
+| `config/settings.json` | `llm` (provider, models, `grounding`, `gemini_tier`, `spend_limit_inr`, `usd_inr`, `prices`), `defaults`, `publish` (method/account per platform), `scheduler` (`keep_awake`, `safe_publish`, `pre_check_minutes`), `analytics` (`weekly`, `channel_url`), `clipper` | no |
 | `config/secrets/` | `youtube_client_secret.json`, `youtube_token.json` | no |
 
 ## Caching
