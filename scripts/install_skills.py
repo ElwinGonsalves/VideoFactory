@@ -21,15 +21,21 @@ DEST = ROOT / ".agent" / "skills"
 
 # Packs from BUILD_SPEC.md section 3. Paid-API packs (vox-director, vox-explainer-skill,
 # vox-ai-motion-graphics-generator) are deliberately excluded.
+# iart-ai/motion-skills is only an index; its packs live in separate repos (listed below).
+# kaomei/stickman-video-director is skipped: its default branch has no files.
 REPOS = [
     "remotion-dev/skills",
     "iart-ai/explainer-video-skills",
     "iart-ai/tiktok-video-skills",
-    "iart-ai/motion-skills",
+    "iart-ai/map-animation-skills",
+    "iart-ai/kinetic-typography-skills",
+    "iart-ai/data-animation-skills",
+    "iart-ai/youtube-video-skills",
     "codepawl/creator-generalist",
     "charlie947/motion-graphics-skills",
     "connerkward/web-media-getter-skill",
     "charlesdove977/watchvideo",
+    "lemomo-ai/lemo-opuscar",
 ]
 
 
