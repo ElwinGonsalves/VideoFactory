@@ -1,4 +1,4 @@
-# Core pipeline (zero paid APIs). Install: pip install -r requirements.txt
+# Core pipeline. Install: pip install -r requirements.txt
 yt-dlp
 scenedetect
 opencv-python-headless
@@ -12,7 +12,15 @@ tzdata
 soundfile
 numpy
 pillow
+# Local web UI
+fastapi
+uvicorn[standard]
+python-multipart
+# Optional official posting APIs (YouTube Data API OAuth)
+google-api-python-client
+google-auth-oauthlib
 # Dev
 ruff
 pytest
-# Optional engines (also: pip install -r requirements-optional.txt)
+httpx
+# Optional engines: requirements-optional.txt  |  NVIDIA GPU: requirements-gpu.txt

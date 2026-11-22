@@ -63,3 +63,12 @@ projects/_smoke/
 projects/*/qa/
 projects/*/props.json
 projects/*/explainroo/
+
+# Local settings, secrets, OAuth tokens (UI Settings tab writes these)
+config/
+.kiro/settings/mcp.json
+# UI job logs
+ui/logs/
+# Generated assets (recreate: python scripts/bootstrap.py --assets)
+studio/public/textures/
+audio_pipeline/sfx_library/

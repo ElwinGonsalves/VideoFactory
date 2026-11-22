@@ -9,6 +9,10 @@ line-length = 120
 target-version = "py310"
 extend-exclude = ["engines", "publisher/social-auto-upload", "studio/node_modules", ".agent", ".venv"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's documented parameter style (`body: dict = Body(...)`) is not a mutable-default bug.
+extend-immutable-calls = ["fastapi.Body", "fastapi.File", "fastapi.Query", "fastapi.Depends"]
+
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 ignore = ["E501"]  # line length is the formatter's job
