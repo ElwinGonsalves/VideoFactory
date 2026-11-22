@@ -1,0 +1,21 @@
+# Declarative queue of scheduled generations and uploads.
+# Run `python scheduler/run_scheduler.py list` to see state, `daemon` to run continuously.
+# Times are ISO 8601; a time without an offset is read in defaults.timezone.
+defaults:
+  timezone: "Asia/Kolkata"
+  youtube_visibility: "unlisted"   # switch to "public" once you trust the pipeline
+  instagram_daily_cap: 2           # keep at 1-2 to avoid automated-account challenges
+  youtube_daily_cap: 5
+  tiktok_daily_cap: 3
+  account: "main"                  # cookie name used at `publisher/publish.py login`
+
+jobs:
+  - id: "concept-001"
+    type: "generate_and_upload"    # generate_only | upload_only | generate_and_upload
+    script_or_prompt: "projects/concept-001/script.json"
+    style: "concept_explainer"
+    aspect_ratio: "9:16"
+    music_mood: "documentary"
+    generate_at: "2026-11-23T08:00:00+05:30"
+    upload_at: "2026-11-23T18:00:00+05:30"
+    platforms: ["youtube", "instagram"]
