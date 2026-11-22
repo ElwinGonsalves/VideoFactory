@@ -1,0 +1,21 @@
+{
+  "name": "video-factory-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remotion studio for video-factory (9:16, 16:9, 1:1 compositions)",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "render": "remotion render src/index.ts"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.544",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "remotion": "4.0.544"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "typescript": "^5.4.0"
+  }
+}
