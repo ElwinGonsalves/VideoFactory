@@ -42,6 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import yaml  # noqa: E402
 
 from common import ROOT  # noqa: E402
+from publisher.post_log import SCHEMA as POSTS_SCHEMA  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 SCHEDULE = HERE / "schedule.yaml"
@@ -97,7 +98,7 @@ log = logging.getLogger("scheduler")
 def connect(path: Path = STATE) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
+    conn.executescript(SCHEMA + POSTS_SCHEMA)  # posts: shared with publisher/post_log.py
     return conn
 
 
@@ -129,6 +130,8 @@ def sync(conn: sqlite3.Connection, schedule: dict[str, Any]) -> int:
     """Insert new jobs; refresh the spec of jobs that have not started. Never resets progress."""
     added = 0
     for job in schedule["jobs"]:
+        if job.get("enabled", True) is False:
+            continue  # paused/example jobs stay in the YAML but never run
         if job.get("type", "generate_and_upload") not in JOB_TYPES:
             raise ValueError(f"job {job.get('id')}: bad type {job.get('type')}")
         spec = json.dumps(job, default=str)
@@ -156,9 +159,7 @@ def backoff(attempts: int) -> timedelta:
 
 
 def uploads_today(conn: sqlite3.Connection, platform: str, day: str) -> int:
-    row = conn.execute(
-        "SELECT COUNT(*) FROM uploads WHERE platform=? AND status='done' AND local_day=?", (platform, day)
-    ).fetchone()
+    row = conn.execute("SELECT COUNT(*) FROM posts WHERE platform=? AND local_day=?", (platform, day)).fetchone()
     return int(row[0])
 
 
@@ -185,7 +186,8 @@ def default_generate(spec: dict[str, Any]) -> str:
 def default_upload(meta_path: str, platform: str, account: str, visibility: str | None) -> None:
     from publisher.publish import upload
 
-    code = upload(Path(meta_path), platform, account, visibility)
+    # The scheduler already checked the cap and records the post itself (see run_upload).
+    code = upload(Path(meta_path), platform, account, visibility, force=True, record=False)
     if code != 0:
         raise RuntimeError(f"{platform} upload exited with {code}")
 
@@ -272,6 +274,19 @@ def run_upload(
     conn.execute(
         "UPDATE uploads SET status='done', done_at=?, local_day=?, last_error=NULL WHERE job_id=? AND platform=?",
         (now_utc().isoformat(), day, job["id"], platform),
+    )
+    conn.execute(
+        "INSERT INTO posts VALUES (?,?,?,?,?,?,?,?)",
+        (
+            now_utc().isoformat(),
+            day,
+            platform,
+            "scheduler",
+            Path(meta).stem.removesuffix(".meta"),
+            visibility,
+            "",
+            job["id"],
+        ),
     )
     event(conn, job["id"], "upload_done", f"{platform} ({visibility or 'default'})")
     conn.commit()
