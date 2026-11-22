@@ -1,0 +1,4 @@
+# Optional local engines. Kokoro non-English voices also need espeak-ng on PATH.
+kokoro>=0.9
+handanim
+manim

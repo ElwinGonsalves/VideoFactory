@@ -1,0 +1,14 @@
+[project]
+name = "video-factory"
+version = "1.0.0"
+description = "Zero-API video and shorts automation"
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["engines", "publisher/social-auto-upload", "studio/node_modules", ".agent", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]  # line length is the formatter's job

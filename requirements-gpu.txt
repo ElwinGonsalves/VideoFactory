@@ -1,0 +1,7 @@
+# NVIDIA GPU acceleration (needs only the NVIDIA driver; no system CUDA Toolkit).
+# faster-whisper / ctranslate2 4.x: CUDA 12 cuBLAS + cuDNN 9, found via common.register_cuda_dlls().
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
+# Kokoro on GPU needs a CUDA torch build. Same version as the CPU one, swapped in place:
+#   pip install --force-reinstall --no-deps torch==2.15.0 --index-url https://download.pytorch.org/whl/cu132
+# (or simply: python scripts/bootstrap.py --gpu)

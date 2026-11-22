@@ -1,0 +1,65 @@
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+.ruff_cache/
+.env
+.env.*
+!.env.example
+
+# Secrets and browser sessions
+cookies/
+publisher/cookies/
+publisher/social-auto-upload/cookies/
+publisher/social-auto-upload/cookiesFile/
+publisher/social-auto-upload/db/*.db
+*.cookie
+*.cookie*
+*cookies*.json
+
+# Rendered media
+*.mp4
+*.mov
+*.mkv
+*.webm
+output/*
+!output/.gitkeep
+projects/*/assets/
+studio/out/
+studio/public/assets/*
+!studio/public/assets/.gitkeep
+
+# Scheduler runtime state and logs
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+scheduler/logs/
+
+# Caches
+.cache/
+media_pipeline/cache/
+audio_pipeline/cache/
+media_pipeline/textures_cache/*.png
+analyzer/work/
+
+# Vendored third-party clones (recreate with: python scripts/bootstrap.py)
+engines/openmontage/
+engines/explainroo/
+engines/clipper/
+publisher/social-auto-upload/
+
+# Downloaded music (recreate with: python scripts/seed_music.py)
+audio_pipeline/music_library/*/*.mp3
+
+# Nested git metadata and tool noise
+**/.git/
+*.log
+_*.log
+
+# Smoke-test workspace
+projects/_smoke/
+projects/*/qa/
+projects/*/props.json
+projects/*/explainroo/
