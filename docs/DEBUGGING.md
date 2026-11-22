@@ -88,6 +88,11 @@ This machine (RTX 4050 Laptop, driver 580.97) runs both on the GPU. Nothing need
 | `Publisher venv missing` | `python scripts/bootstrap.py --publisher` |
 | `No module named tinycss2` (or similar) in social-auto-upload | Upstream `requirements.txt` lags `pyproject.toml`; `bootstrap.py --publisher` installs both |
 | Garbled Chinese text in upstream logs | Harmless. `publish.py` sets `PYTHONUTF8=1`; the upstream messages are in Chinese |
+| `instagram daily cap reached (2/2 today)` (CLI exit code 3) | Caps count every post from UI, CLI and scheduler (`posts` table). Wait for tomorrow, raise the cap in Schedule → Defaults, or `publish.py upload ... --force` for one exception |
+| `YouTube API not connected` | Settings → Publishing → Official API credentials: upload the Desktop-app OAuth JSON, then **Connect YouTube API** (a consent page opens). Or switch the method back to *cookie* |
+| API upload succeeded but the video is private | Expected for unverified Google Cloud projects until Google's API audit passes. Use the cookie method meanwhile |
+| `Instagram container failed: 400` | The token needs `instagram_content_publish` and the account must be Business/Creator; check `graph_api_version` in `config/settings.json` |
+| TikTok API post is "SELF_ONLY" / private | Unaudited TikTok apps can only post privately. The TikTok adapter follows the documented Direct Post flow but has not been tested against a live account |
 
 Never commit `publisher/**/cookies/`. `.gitignore` excludes them; check with `git status` before pushing.
 
@@ -97,7 +102,60 @@ Never commit `publisher/**/cookies/`. `.gitignore` excludes them; check with `gi
 - A job is stuck as `running` after a crash: `sqlite3 scheduler/state.sqlite "UPDATE jobs SET gen_status='pending' WHERE id='x'"`, or delete `state.sqlite` to start over (history is lost; `schedule.yaml` is the source of jobs).
 - A job needs `projects/<slug>/script.json`. If `script_or_prompt` is a plain prompt, the scheduler writes `prompt.txt` and retries until the agent has written the script.
 
+## Web UI
+
+| Symptom | Fix |
+| --- | --- |
+| `missing or wrong session token; reload the page` | The server restarted and issued a new token. Reload the tab |
+| `bad host` | You opened it via a hostname other than `127.0.0.1`/`localhost`. Use `http://127.0.0.1:8765`, or start with `--host 0.0.0.0` for LAN access |
+| Phone cannot connect | Start with `--host 0.0.0.0`, open the printed link (it carries the token), and allow Python through Windows Firewall for private networks |
+| Port in use | `python ui/server.py --port 8770` |
+| A job seems stuck | The bottom log panel shows its live output; **Cancel** kills the whole process tree (Chrome + FFmpeg). Logs persist in `ui/logs/<job>.log` |
+| Renders wait in "queued" | By design: renders, analyses and approvals run one at a time to protect GPU, RAM and Chrome |
+
+## Language model (Gemini / Ollama / OpenAI-compatible)
+
+| Symptom | Fix |
+| --- | --- |
+| `GEMINI_API_KEY is not set` | Settings → Language model → paste the key → Save. Renders still work without it (titles/hashtags fall back to script fields) |
+| `Gemini rejected the API key (403)` | Regenerate the key at https://aistudio.google.com/api-keys |
+| `HTTP 404 ... model not found` | Google retired the model. Settings → **List Gemini models**, put a current one in *Gemini model*. The adapter already tries `gemini_fallback_models` in `config/settings.json` |
+| `HTTP 429` | Free-tier rate limit. The adapter retries with backoff and moves to the next fallback model; wait a minute or space out jobs |
+| `Ollama model 'qwen2.5:7b' not found` | `ollama pull qwen2.5:7b` (~4.7 GB disk). Vision (reading reference frames) needs a vision model, e.g. `qwen2.5vl:7b` |
+| Script facts look wrong | The model is told to list every number in `facts_to_verify`; the Library shows them. Edit the scene text and re-render |
+| `blueprint: vision step skipped` | The provider can't read images; ideas still work from transcript + pacing. Fill `hook_first_3s.visual_pattern` by hand if you want |
+
+## Reference analysis (yt-dlp)
+
+| Symptom | Fix |
+| --- | --- |
+| `HTTP Error 429` on subtitles | Captions are best-effort now (original English only); the video still downloads. If the video itself 429s, wait and retry |
+| `HTTP Error 403` / "Sign in to confirm you're not a bot" | `.venv\Scripts\python -m pip install -U yt-dlp`; for age-gated public videos add `--cookies-from-browser chrome` in `analyzer/analyze_reference.py::download` |
+| Old yt-dlp is used | `common.which()` prefers `.venv\Scripts`; check with `.venv\Scripts\yt-dlp --version` |
+| `exceeds the 15-sheet gate` | Use mode `hook` (first 20 s) or `condensed`, or tick "allow long videos" |
+
+## Engines
+
+| Symptom | Fix |
+| --- | --- |
+| explainroo `Error: write EOF` | Too many parallel FFmpeg pipes for free RAM. The engine uses `--workers 2`; lower with `"explainroo": {"workers": 1}` |
+| explainroo first render is slow | It downloads its voice runtime/model once (~100 MB, `~/.cache/explainroo`) |
+| `Timed out after 30000ms while setting up the headless browser` | Remotion Chrome start-up under memory pressure. `render_video` retries once with `--concurrency=2`; close heavy apps or pass `--concurrency 2` |
+| Clipper crops off the speaker | Turn on speaker tracking (Settings → Video defaults, or `"clip": {"speaker_tracking": true}`). It follows the largest face per shot; `speaker_tracking.json` in assets shows the positions |
+| Manim/handanim video has no captions | Captions are burned in from `assets/captions.json` by `engines.mux_audio`; check that file exists |
+| Map scene shows no countries | Codes must be ISO A3 (`USA`, `IND`, `GBR`). `studio/public/geo/countries.geojson` must exist (`python scripts/fetch_geo.py`) |
+
+## Node / npm
+
+| Symptom | Fix |
+| --- | --- |
+| `npm error Invalid Version:` | A lockfile with empty entries. Move `studio/package-lock.json` aside and run `npm install` again (this regenerated it cleanly during the build) |
+| `You can only pass the quality option if imageFormat is 'jpeg'` | Fixed in `studio/scripts/stills.mjs`; pull the latest version |
+
 ## Windows and OneDrive
 
 - `PermissionError: [WinError 32] ... being used by another process` comes from OneDrive or antivirus scanning a new file. `common.safe_replace` retries renames. If it persists, pause OneDrive sync or keep the project outside OneDrive.
+- `UnicodeEncodeError: 'charmap' codec can't encode character` came from Remotion's progress glyphs on a cp1252 console. `common` reconfigures stdout/stderr to replace unencodable characters.
+- Wikimedia `HTTP 429` on every download: Wikimedia requires a descriptive User-Agent with contact info; both fetchers send `video-factory/1.0 (https://github.com/ElwinGonsalves/video-factory; ...)`. Change it if you fork the project.
+- Disk space: renders need ~1 GB of temporary space. The pip cache (`%LOCALAPPDATA%\pip\cache`) and npm cache (`%LOCALAPPDATA%\npm-cache`) can be cleared safely with `pip cache purge` and `npm cache clean --force`.
 - Hugging Face symlink warnings are silenced; the model cache still works without Developer Mode.

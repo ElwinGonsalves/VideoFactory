@@ -4,7 +4,9 @@
 
 ## Add jobs
 
-Edit `schedule.yaml` directly, or use the CLI (it appends to the YAML):
+The easiest way is the UI **Schedule** tab: pick a project, times and platforms, **Add to schedule**, and switch **daemon running** on (the daemon then runs while the UI is open; for always-on, use a startup task below). Each job has an **on** toggle (`enabled` in the YAML), **Run now**, **Retry** and delete.
+
+You can also edit `schedule.yaml` directly, or use the CLI (it appends to the YAML):
 
 ```powershell
 .venv\Scripts\python scheduler\run_scheduler.py add --id netflix-dvd `
@@ -49,7 +51,8 @@ Times without an offset are read in `defaults.timezone`.
 ## Rules
 
 - **Retries:** a failed generation or upload is retried after 5, 10, 20 and 40 minutes. After the 5th failure it is marked `failed` and waits for `retry`.
-- **Daily caps:** successful uploads are counted per platform per local day. At the cap, the upload moves to the same time tomorrow. Defaults: Instagram 2 (keep it at 1-2), YouTube 5, TikTok 3.
+- **Daily caps:** successful uploads are counted per platform per local day in the `posts` table, which the UI Upload button, `publisher/publish.py` and the scheduler all share. At the cap, a scheduled upload moves to the same time tomorrow and a manual one is refused. Defaults: Instagram 2 (keep it at 1-2), YouTube 5, TikTok 3.
+- **Paused jobs:** `enabled: false` keeps a job in the YAML without running it. The shipped `concept-001` example is paused.
 - **Visibility:** YouTube uploads use `defaults.youtube_visibility` (`unlisted`) unless a job sets `visibility`. Switch to `public` after you have reviewed a few unlisted uploads.
 - **Sync never resets progress:** editing a job in the YAML updates it only while it is still `pending`. Finished jobs stay finished.
 
@@ -101,6 +104,7 @@ Start the daemon at boot:
 sqlite3 scheduler\state.sqlite "SELECT id, gen_status, gen_attempts, gen_next_at FROM jobs;"
 sqlite3 scheduler\state.sqlite "SELECT job_id, platform, status, attempts, local_day FROM uploads;"
 sqlite3 scheduler\state.sqlite "SELECT at, job_id, kind, detail FROM events ORDER BY at DESC LIMIT 20;"
+sqlite3 scheduler\state.sqlite "SELECT at, local_day, platform, method, slug, visibility FROM posts ORDER BY at DESC;"
 ```
 
 Without the sqlite3 CLI: `.venv\Scripts\python -c "import sqlite3;print(sqlite3.connect('scheduler/state.sqlite').execute('select * from events').fetchall())"`.

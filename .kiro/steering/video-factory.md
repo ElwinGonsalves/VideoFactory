@@ -31,6 +31,13 @@
 3. Present 5 tailored video ideas mapped to that blueprint (each with Title, Hook, Core Concept/Angle, Case Study/Example, Engine Selection, and Music Mood) in `analyzer/work/<run>/IDEAS.md`.
 4. STOP and wait for explicit user approval of which idea(s) to generate before running audio, music, or rendering scripts. Record it with `analyze_reference.py approve --work <run> --ideas <n,...>`.
 
+## Tools available to you
+- Web UI for the user: `python ui/server.py` (localhost only). Everything it does is also a CLI command, so you can drive the same steps directly.
+- Language model: `python -m llm.cli write-script --prompt "..."`, `python -m llm.cli metadata --slug <slug>`. Provider and keys live in Settings (`.env`, `config/settings.json`); never print or commit keys.
+- Every script lists numeric claims in `facts_to_verify`; tell the user to check them before publishing.
+- Uploads: YouTube defaults to unlisted; daily caps are enforced for every path. Never upload without the user asking.
+- handanim MCP server (`.kiro/settings/mcp.json`) gives direct whiteboard-scene tools.
+
 ## Debugging
 - Health check: `python scripts/doctor.py`. End-to-end check: `python scripts/smoke_test.py`.
 - Known fixes live in `docs/DEBUGGING.md`; add new ones there when you solve something.

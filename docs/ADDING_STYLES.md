@@ -16,7 +16,13 @@ Pick another composition with `style`, change `caption_style`, or switch brand.
 
 New brand: copy `studio/brands/default/` to `studio/brands/<name>/`, edit colors and fonts, and pass `brand_name` in `pipeline/render.build_props` (or add a `"brand"` field to the script and wire it through).
 
+Transitions (`"transition"` in the script, or the blueprint's `pacing.transition_style`): `hard_cut`, `fade`, `whip_pan` (motion blur), `paper_slide`, `pen_draw` (left-to-right wipe). Sound effects follow the look automatically (`"sfx": "auto"`): concept → subtle whoosh + pop, vox → paper flip + click, whiteboard → pen scratch + pop; a blueprint's `audio_profile.sfx_cues` overrides them. Available sounds: `whoosh`, `subtle_whoosh`, `pop`, `click`, `paper_flip`, `pen_scratch`, `riser`, `ding` (synthesized locally by `audio_pipeline/sfx.py`).
+
+Editorial maps: `{"type": "map", "heading": "...", "countries": ["USA", "IND"], "label": "..."}`. Up to 4 countries zoom in; more show the world with each country filling in turn.
+
 ## 2. Learn a style from a reference video
+
+The UI **Ideas** tab does all of this: paste links, **Analyze + propose ideas**, tick ideas, **Approve selected**. With a Gemini key, the model also reads the contact sheets to fill the blueprint's visual fields (what the first 3 seconds show, on-screen text, style notes) and writes the 5 ideas and, on approval, full scripts. Terminal version:
 
 ```powershell
 .venv\Scripts\python analyzer\analyze_reference.py analyze "https://www.youtube.com/shorts/XXXX" --style my_style --mode condensed
@@ -30,12 +36,14 @@ This writes:
 - `analyzer/blueprints/my_style.json`: measured pacing, aspect, words per minute; `TODO` fields for judgement calls
 - `.../IDEAS.md`: the 5-idea approval sheet
 
-Then (Kiro does this when asked):
+With an LLM configured, `analyze` continues automatically (`--no-ideas` to skip):
 
-1. Read the contact sheets and fill in every `TODO` in the blueprint (`visual_pattern`, `visual_vs_verbal_contrast`).
-2. Fill five ideas in `IDEAS.md`: Title, Hook, Core Concept/Angle, Case Study/Example, Engine Selection, Music Mood.
-3. Stop and wait for the user to choose.
-4. `analyze_reference.py approve --work analyzer/work/<run> --ideas 2,4` scaffolds `projects/my_style-idea2/script.json` with the blueprint's style, aspect, mood and caption style, marked `"approval": "approved"`.
+1. Vision pass over the contact sheets fills the blueprint's `TODO` fields.
+2. Five ideas are written to `ideas.json` and `IDEAS.md`: Title, Hook, Core Concept/Angle, Case Study/Example, Engine Selection, Music Mood.
+3. It stops and waits for you to choose.
+4. `analyze_reference.py approve --work analyzer/work/<run> --ideas 2,4` writes a complete `projects/my_style-idea2/script.json` per idea (or a scaffold with `--scaffold-only` / without an LLM), marked `"approval": "approved"`.
+
+Without an LLM, Kiro can do steps 1-2 by reading the sheets and filling `IDEAS.md`.
 
 `make_video.py` refuses any script that names a blueprint without that approval.
 

@@ -1,6 +1,6 @@
 # First video guide
 
-**Push this repo to GitHub** (no remote was configured and `gh` was not installed during the build). Create an empty **private** repo named `video-factory` at https://github.com/new, then run:
+**Push this repo to GitHub** (no remote was configured and the GitHub CLI was not logged in during the build). Create an empty **private** repo named `video-factory` at https://github.com/new, then run:
 
 ```powershell
 git remote add origin https://github.com/ElwinGonsalves/video-factory.git
@@ -17,11 +17,37 @@ All commands run from the `video-factory` folder in PowerShell.
 .venv\Scripts\python scripts\doctor.py
 ```
 
-Every `REQUIRED` line should say `PASS`. `skip` lines are optional (espeak-ng, GPU, gh, upload cookies). On a fresh clone, run `python scripts\bootstrap.py` first; it creates `.venv`, installs Node packages, clones the engines and uploader, seeds the music library and installs the skill packs.
+Every `REQUIRED` line should say `PASS`. `skip` lines are optional (upload cookies, an LLM key you haven't added yet, gh). On a fresh clone, run `python scripts\bootstrap.py` first. It creates `.venv`, installs Node packages, clones the engines and uploader (`scripts\setup_repos.ps1` does only that part), seeds the music library, installs the skill packs, swaps in GPU builds when an NVIDIA driver is present, and writes the handanim MCP config.
 
-## 2. Generate your first video (about 3-5 minutes)
+## 2. Open the UI
 
-A ready-made 9:16 concept + case-study Short ships in `projects/concept-001/script.json` (Netflix's DVD years, six scenes, about 35 seconds):
+```powershell
+.venv\Scripts\python ui\server.py
+```
+
+Your browser opens `http://127.0.0.1:8765`. The UI only listens on this computer. To preview on your phone over the same Wi-Fi, use `--host 0.0.0.0` and open the link the console prints (it contains the access token).
+
+Five tabs:
+
+| Tab | What you do there |
+| --- | --- |
+| **Create** | Type a topic → **Write script** (the LLM writes hook / concept / case study / takeaway) → edit narration and headings → **Render** |
+| **Ideas** | Paste reference links → the analyzer learns their style → 5 ideas → tick the ones you want → **Approve selected** (renders them if "render after approval" is on) |
+| **Library** | Watch the result, check the 5 QA frames (cover + hook/early/mid/outro, red border = an automated check failed), edit or AI-regenerate title, description, hashtags, then **Upload** |
+| **Schedule** | Queue renders and uploads for later, see daily caps, start the scheduler daemon |
+| **Settings** | Gemini key, video defaults, publishing logins, **System health** button |
+
+The panel at the bottom shows the live log of whatever is running.
+
+## 3. Add your Gemini key (one time)
+
+Get a free key at https://aistudio.google.com/api-keys. In **Settings → Language model**, paste it into *Gemini API key*, click **Save**, then **Test connection**. The key is stored in the local `.env` file (gitignored) and shown masked afterwards.
+
+Without a key everything still renders; only script writing, ideas and AI titles/hashtags are unavailable. Free-tier note: Google may use free-tier prompts to improve its products.
+
+## 4. Render the example (about 3 minutes)
+
+A ready-made 9:16 concept + case-study Short ships in `projects/concept-001` (Netflix's DVD years, 8 scenes including a world map and a chart, about 47 s). In **Create**, click **Open** on it, then **Render**. Or from the terminal:
 
 ```powershell
 .venv\Scripts\python make_video.py projects\concept-001
@@ -29,73 +55,38 @@ A ready-made 9:16 concept + case-study Short ships in `projects/concept-001/scri
 
 What happens:
 
-1. Edge-TTS voices each scene and faster-whisper times every word. The audio sets the length of everything.
-2. A documentary-mood track from the local library is laid under the voice, ducked while the narrator speaks, and the master is normalized to -14 LUFS.
-3. Four QA stills (hook, early, mid, outro) are written to `projects\concept-001\qa\`.
-4. Remotion renders `output\concept-001.mp4` (H.264 yuv420p + AAC, faststart) and writes `output\concept-001.meta.json`.
+1. Edge-TTS voices each scene; faster-whisper (on your GPU) times every word. The audio sets the length of everything.
+2. A documentary track from the local library is laid under the voice, ducked while the narrator speaks, with whoosh/pop sound effects at scene changes; the master is normalized to -14 LUFS.
+3. Five QA stills are rendered and checked automatically: frame 0 must be a high-contrast cover, nothing may sit in the Shorts UI zones (bottom 22%, right 15%), nothing may run off the frame edge.
+4. Remotion renders `output\concept-001.mp4` (H.264 yuv420p + AAC, faststart).
+5. A thumbnail (`output\concept-001.thumb.jpg`) and upload metadata (`output\concept-001.meta.json`) are written. With a Gemini key, the metadata includes 3 title variants, alternative hooks, hashtags and tags.
 
-## 3. Preview it
+The Library tab shows a yellow **Verify before posting** box listing the facts the script states with numbers. Check them before you publish.
 
-```powershell
-start output\concept-001.mp4
-start projects\concept-001\qa
-```
+## 5. Make your own
 
-Look at the four stills for clipped text or anything in the Shorts UI area. Re-run with `--safe-zones` to draw the unsafe regions in red:
+In **Create**, type a topic, for example *"Why Costco sells hot dogs for $1.50"*, pick a style (`concept_explainer`, `vox_documentary`, `whiteboard`, ...), aspect and mood, click **Write script**, edit the scenes, then **Render**.
 
-```powershell
-.venv\Scripts\python make_video.py projects\concept-001 --safe-zones --skip-qa
-```
+From a reference video instead: in **Ideas**, paste one or more YouTube/Shorts/Reels/TikTok links and click **Analyze + propose ideas**. The analyzer downloads them, tiles frames into contact sheets, transcribes, measures shot pacing, lets Gemini read the frames, and saves a style blueprint. You get 5 ideas in that style; nothing renders until you approve.
 
-For live tweaking, run `cd studio; npx remotion studio src/index.ts` and paste `projects\concept-001\props.json` into the props panel.
+Terminal equivalents: `python -m llm.cli write-script --prompt "..."` and `python analyzer\analyze_reference.py analyze <url> --style my_style`.
 
-## 4. Make your own
+## 6. One-time login for uploads
 
-Copy the example and edit the narration and visuals:
+In **Settings → Publishing**, click **Login** next to YouTube (and Instagram/TikTok if you use them). A browser opens; sign in, then close it. Cookies are saved under `publisher\social-auto-upload\cookies\` (gitignored). **Check** confirms they are valid.
 
-```powershell
-Copy-Item -Recurse projects\concept-001 projects\my-first
-notepad projects\my-first\script.json
-.venv\Scripts\python make_video.py projects\my-first
-```
+Official APIs (optional, under *Official API credentials*) need app approval: YouTube API uploads stay private until Google audits your project, Instagram needs a Business/Creator account and a Meta app, TikTok posts are private until your app is audited. Keep the method on **cookie** until then.
 
-Useful switches: `--aspect 16:9` or `--aspect 1:1`, `--style vox_documentary` or `--style whiteboard`, `--mood upbeat|chill|dramatic|documentary`. Scene types: `headline`, `stat`, `bullets`, `chart`, `image`, `quote`, `flow` (schema in `docs/ARCHITECTURE.md`).
+## 7. Test upload (unlisted)
 
-Or ask Kiro: "Make a 50-second Short about X." The steering file `.kiro/steering/video-factory.md` tells it to write the script, run the pipeline, and inspect the QA stills.
+In **Library**, pick `youtube`, leave visibility on *default (unlisted)*, tick **show browser** for the first try, and click **Upload**. Check the video in YouTube Studio. When you trust the pipeline, switch the default in **Schedule → Defaults** or pick *public* per upload.
 
-Need real photos? Fetch keyless archive images and reference them as `image` visuals:
+Daily caps (Instagram 2, YouTube 5, TikTok 3) apply to every upload, whether from the UI, the scheduler or the CLI.
 
-```powershell
-.venv\Scripts\python media_pipeline\fetch_free_media.py "apollo 11 launch" --out projects\my-first\assets\media
-```
+## 8. Schedule it
 
-## 5. One-time login for uploads
-
-Each platform needs one manual sign-in. A browser opens; log in, then close it. Cookies are saved under `publisher\social-auto-upload\cookies\`, which is gitignored.
-
-```powershell
-.venv\Scripts\python publisher\publish.py login youtube --account main
-.venv\Scripts\python publisher\publish.py check youtube --account main     # prints "valid"
-.venv\Scripts\python publisher\publish.py login instagram --account main   # optional
-```
-
-## 6. Test upload (unlisted)
-
-```powershell
-.venv\Scripts\python publisher\publish.py upload output\concept-001.meta.json --platform youtube --account main --headed
-```
-
-YouTube uploads default to **unlisted**. Check the video in YouTube Studio. When you are happy, pass `--visibility public` or set `youtube_visibility: "public"` in `scheduler/schedule.yaml`.
-
-## 7. Schedule it
-
-```powershell
-.venv\Scripts\python scheduler\run_scheduler.py list
-.venv\Scripts\python scheduler\run_scheduler.py daemon
-```
-
-See `docs/SCHEDULER.md` for batches, daily caps and starting the daemon at log-on.
+In **Schedule**, choose a project, a generate time and an upload time, tick platforms, **Add to schedule**, then switch **daemon running** on. See `docs/SCHEDULER.md` to start the daemon automatically at log-on.
 
 ## If something breaks
 
-Run `scripts\smoke_test.py` (a full 5-second render with checks) and read `docs/DEBUGGING.md`.
+**Settings → System health** runs `doctor.py`; **Run smoke test** does a full 5-second render with checks. Then read `docs/DEBUGGING.md`.
