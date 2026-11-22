@@ -5,7 +5,7 @@ Edge-TTS -> faster-whisper word captions -> ducked music (-14 LUFS) -> Remotion 
 It also measures the ducking: music under speech must be quieter than the same music undocked.
 
 Usage: python scripts/smoke_test.py [--keep]
-Output: output/smoke_test.mp4 (+ projects/_smoke/qa/*.png stills)
+Output: output/smoke_test/smoke_test.mp4 (+ projects/_smoke/qa/*.png stills)
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from audio_pipeline.mix_music_and_sfx import (  # noqa: E402
     measure_lufs,
     music_gain,
 )
-from common import ASSETS, OUTPUT, media_duration, read_json, run, which, write_json  # noqa: E402
+from common import ASSETS, media_duration, paths, read_json, run, which, write_json  # noqa: E402
 from make_video import produce  # noqa: E402
 
 PROJECT = ROOT / "projects" / "_smoke"
@@ -112,7 +112,7 @@ def main() -> int:
     if not qa_report.get("ok"):
         issues = [f"{f['frame']}: {i}" for f in qa_report.get("frames", []) for i in f["issues"]]
         failures.append("visual QA failed: " + "; ".join(issues))
-    thumb = OUTPUT / "smoke_test.thumb.jpg"
+    thumb = paths.thumb_path("smoke_test")
     if not thumb.exists() or thumb.stat().st_size > 2_000_000:
         failures.append("thumbnail missing or over YouTube's 2 MB limit")
     sfx_used = read_json(run_dir / "attribution.json").get("sfx", [])
@@ -138,7 +138,7 @@ def main() -> int:
     if failures:
         print("\nFAILED:\n  - " + "\n  - ".join(failures))
         return 1
-    print(f"\nPASSED -> {OUTPUT / 'smoke_test.mp4'}")
+    print(f"\nPASSED -> {paths.video_path('smoke_test')}")
     return 0
 
 

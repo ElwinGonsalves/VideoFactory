@@ -5,8 +5,8 @@ Steps (audio first, because audio duration is the master clock):
   2. Ducked music + SFX        audio_pipeline/mix_music_and_sfx.py, audio_pipeline/sfx.py (-14 LUFS)
   3. Route style -> engine     pipeline/router.py (composition, transition, look)
   4. Visual QA                 cover + hook/early/mid/outro stills, automated pixel checks -> qa/report.json
-  5. Final render              output/<slug>.mp4 (H.264 yuv420p + AAC, faststart)
-  6. Thumbnail + metadata      output/<slug>.thumb.jpg, output/<slug>.meta.json (LLM titles/hashtags if set up)
+  5. Final render              output/<slug>/<slug>.mp4 (H.264 yuv420p + AAC, faststart)
+  6. Thumbnail + metadata      output/<slug>/<slug>.thumb.jpg, .meta.json (LLM titles/hashtags if set up)
 
 Usage:
     python make_video.py projects/demo
@@ -23,7 +23,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from audio_pipeline import make_voice_and_subs, mix_music_and_sfx, sfx  # noqa: E402
-from common import OUTPUT, ROOT, read_json, settings, write_json  # noqa: E402
+from common import ROOT, db, paths, read_json, settings, write_json  # noqa: E402
 from pipeline import render  # noqa: E402
 from pipeline.router import route  # noqa: E402
 from pipeline.visuals import validate_script as validate_visuals  # noqa: E402
@@ -171,7 +171,7 @@ def produce(
     attribution = {"music": track, "sfx": [Path(c["file"]).stem for c in cues], "media": media_attr}
     write_json(run_dir / "attribution.json", attribution)
 
-    out_mp4 = OUTPUT / f"{slug}.mp4"
+    out_mp4 = paths.video_path(slug)
     qa_report: dict[str, Any] | None = None
     if r.engine != "remotion":
         print(f"[3/6] engine {r.engine}", flush=True)
@@ -234,7 +234,15 @@ def produce(
     meta = build_meta(
         script, slug, out_mp4, attribution, aspect=aspect, generated=generated, thumbnail=thumbnail, qa_report=qa_report
     )
-    write_json(OUTPUT / f"{slug}.meta.json", meta)
+    write_json(paths.meta_path(slug), meta)
+    db.upsert_project(
+        slug,
+        meta["title"],
+        style=style,
+        aspect_ratio=aspect,
+        duration_sec=report["duration_sec"],
+        status="rendered",
+    )
     print(f"DONE {report['video']} | {report['audio']} | {report['duration_sec']}s -> {out_mp4}", flush=True)
     return {"mp4": str(out_mp4), "meta": meta, "report": report, "qa": qa_report}
 

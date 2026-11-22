@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from common import OUTPUT, PROJECTS, read_json, settings, write_json  # noqa: E402
+from common import PROJECTS, paths, read_json, settings, write_json  # noqa: E402
 from common.slugs import title_slug  # noqa: E402
 from llm.providers import GeminiProvider, get_provider  # noqa: E402
 from llm.tasks import script_from_text, write_metadata, write_script  # noqa: E402
@@ -84,7 +84,7 @@ def cmd_write_script(a: argparse.Namespace) -> int:
 
 
 def cmd_metadata(a: argparse.Namespace) -> int:
-    meta_path = OUTPUT / f"{a.slug}.meta.json"
+    meta_path = paths.find(a.slug, "meta") or paths.meta_path(a.slug)
     script = read_json(PROJECTS / a.slug / "script.json")
     meta = read_json(meta_path) if meta_path.exists() else {}
     gen = write_metadata(

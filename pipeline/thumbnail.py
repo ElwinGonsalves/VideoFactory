@@ -1,6 +1,6 @@
 """Code-rendered thumbnails: a frame from the video (or an archive image) + hook text in brand style.
 
-Outputs output/<slug>.thumb.jpg (YouTube needs JPG/PNG under 2 MB). For 9:16 the frame-0 cover
+Outputs output/<slug>/<slug>.thumb.jpg (YouTube needs JPG/PNG under 2 MB). For 9:16 the frame-0 cover
 already is the in-feed image; the thumbnail is still made for Reels covers and Library previews.
 """
 
@@ -10,7 +10,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from common import ASSETS, OUTPUT, STUDIO, read_json, run, which, write_json
+from common import ASSETS, STUDIO, paths, read_json, run, which, write_json
 from pipeline.render import render_stills_batch
 
 
@@ -60,7 +60,7 @@ def make_thumbnail(
     brand_name: str = "default",
     theme: str | None = None,
 ) -> Path:
-    mp4 = OUTPUT / f"{slug}.mp4"
+    mp4 = paths.video_path(slug)
     props = {
         "aspectRatio": aspect,
         "text": " ".join(text.split()[:5]) or slug,
@@ -76,7 +76,7 @@ def make_thumbnail(
     write_json(props_file, props)
     png = run_dir / "thumbnail.png"
     render_stills_batch([{"composition": "Thumbnail", "props": props_file, "frame": 0, "output": png}], run_dir)
-    out = OUTPUT / f"{slug}.thumb.jpg"
+    out = paths.thumb_path(slug)
     run([which("ffmpeg"), "-y", "-v", "error", "-i", str(png), "-q:v", "3", str(out)])
     qa_dir = run_dir.parent / "qa"
     qa_dir.mkdir(parents=True, exist_ok=True)

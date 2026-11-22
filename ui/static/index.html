@@ -149,7 +149,15 @@
 
     <!-- LIBRARY -->
     <section id="tab-library" class="tab">
-      <div id="library"></div>
+      <div class="master-detail">
+        <div class="card master">
+          <input id="l-q" placeholder="Search title...">
+          <div class="row"><select id="l-style"></select><select id="l-aspect"><option value="">any aspect</option><option>9:16</option><option>16:9</option><option>1:1</option></select></div>
+          <div id="l-list" class="list"></div>
+          <div class="row between"><button id="l-prev" class="small">&larr;</button><span id="l-page" class="muted s"></span><button id="l-next" class="small">&rarr;</button></div>
+        </div>
+        <div class="card detail" id="inspector"><p class="muted">Pick a video on the left.</p></div>
+      </div>
     </section>
 
     <!-- SCHEDULE -->

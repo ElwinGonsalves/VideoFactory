@@ -313,64 +313,94 @@ $('#b-run').onclick = () => act(async () => {
   watch(job, 'Batch started: one video at a time', () => toast('Batch finished: see Library'));
 });
 
-// ---------------------------------------------------------------- LIBRARY
-loaders.library = async () => {
-  const items = await api('/api/library');
-  $('#library').innerHTML = items.map((v) => {
-    const m = v.meta; const qa = v.qa;
-    const frames = v.qa_frames.map((f) => {
-      const r = qa?.frames?.find((x) => x.frame === f.name); const cls = r ? (r.ok ? 'ok' : 'bad') : '';
-      return `<figure><img class="${cls}" src="${file(f.src)}" data-zoom-src="${file(r && !r.ok && f.overlay ? f.overlay : f.src)}" title="${esc((r?.issues || []).join('; ') || 'ok')}">
-        <figcaption>${esc(f.name)}${r && !r.ok ? ' ⚠' : ''}</figcaption></figure>`;
-    }).join('');
-    const issues = (qa?.frames || []).flatMap((f) => f.issues.map((i) => `${f.frame}: ${i}`));
-    const facts = m.facts_to_verify || [];
-    return `<div class="card video-card" data-slug="${esc(v.slug)}">
-      <div>${v.video ? `<video controls preload="metadata" src="${file(v.video)}" poster="${v.thumbnail ? file(v.thumbnail) : ''}"></video>` : '<p class="muted">no video file</p>'}
-        ${v.thumbnail ? `<img class="thumb" src="${file(v.thumbnail)}" data-zoom-src="${file(v.thumbnail)}" title="thumbnail">` : ''}
-        <div class="actions">${v.video ? `<a href="${file(v.video)}" download><button class="small">Download MP4</button></a>` : ''}
-          ${v.thumbnail ? `<a href="${file(v.thumbnail)}" download><button class="small">Thumbnail</button></a>` : ''}</div></div>
-      <div>
-        <div class="row between"><h2>${esc(m.title)}</h2>
-          <span class="badge ${qa ? (qa.ok ? 'ok' : 'bad') : ''}">QA ${qa ? (qa.ok ? 'pass' : 'issues') : 'n/a'}</span></div>
-        <div class="qa">${frames}</div>
-        ${issues.length ? `<div class="warn">${issues.map(esc).join('<br>')}</div>` : ''}
-        ${facts.length ? `<div class="warn"><b>Verify before posting:</b> ${facts.map(esc).join(' · ')}</div>` : ''}
-        <label>Title ${m.title_variants?.length > 1 ? '(variants: ' + m.title_variants.map((t, i) => `<a href="#" data-title="${i}">${i + 1}</a>`).join(' ') + ')' : ''}</label>
-        <input data-m="title" value="${esc(m.title)}">
-        <label>Description</label><textarea data-m="description" rows="4">${esc(m.description)}</textarea>
-        <div class="row"><div><label>Hashtags</label><input data-m="hashtags" value="${esc((m.hashtags || []).join(' '))}"></div>
-          <div><label>Tags (comma)</label><input data-m="tags" value="${esc((m.tags || []).join(', '))}"></div></div>
-        ${m.hook_variants?.length ? `<div class="s muted">Alternative hooks: ${m.hook_variants.map(esc).join(' · ')}</div>` : ''}
-        <div class="s muted">Metadata: ${esc(m.metadata_source || 'script')} · ${esc(m.music_attribution)}</div>
-        <div class="actions"><button data-save>Save metadata</button><button data-regen>Regenerate with AI</button></div>
-        <h3>Publish</h3>
-        <div class="actions">
-          <select data-p="platform" style="width:auto">${['youtube', 'instagram', 'tiktok'].map((p) => `<option>${p}</option>`).join('')}</select>
-          <select data-p="visibility" style="width:auto"><option value="">YouTube: default (${esc(m.visibility || 'unlisted')})</option><option>unlisted</option><option>private</option><option>public</option></select>
-          <label class="inline"><input type="checkbox" data-p="headed"> show browser</label>
-          <button class="primary" data-publish>Upload</button>
-        </div>
-      </div></div>`;
-  }).join('') || '<div class="card muted">Nothing rendered yet. Create a video first.</div>';
-  $$('#library [data-zoom-src]').forEach((i) => (i.onclick = () => zoom(i.dataset.zoomSrc)));
-  $$('#library .video-card').forEach((card) => {
-    const slug = card.dataset.slug; const item = items.find((x) => x.slug === slug);
-    $$('[data-title]', card).forEach((a) => (a.onclick = (e) => { e.preventDefault(); $('[data-m=title]', card).value = item.meta.title_variants[+a.dataset.title]; }));
-    $('[data-save]', card).onclick = () => act(async () => {
-      const body = {title: $('[data-m=title]', card).value, description: $('[data-m=description]', card).value,
-        hashtags: $('[data-m=hashtags]', card).value.split(/[\s,]+/).filter(Boolean), tags: $('[data-m=tags]', card).value.split(',').map((s) => s.trim()).filter(Boolean)};
-      await api(`/api/library/${encodeURIComponent(slug)}/meta`, {method: 'PUT', body}); toast('Metadata saved (kept on re-render)');
-    });
-    $('[data-regen]', card).onclick = () => act(async () => watch(await api(`/api/library/${encodeURIComponent(slug)}/metadata`, {method: 'POST'}), 'AI metadata', () => loaders.library()));
-    $('[data-publish]', card).onclick = () => act(async () => {
-      const platform = $('[data-p=platform]', card).value;
-      if (!confirm(`Upload "${item.meta.title}" to ${platform}?`)) return;
-      const body = {platform, visibility: $('[data-p=visibility]', card).value, headed: $('[data-p=headed]', card).checked};
-      watch(await api(`/api/library/${encodeURIComponent(slug)}/publish`, {method: 'POST', body}), `Uploading to ${platform}`);
-    });
+// ---------------------------------------------------------------- LIBRARY (master-detail)
+const lib = {q: '', style: '', aspect: '', page: 1, selected: null};
+let libTimer = null;
+async function loadLibraryList() {
+  const qs = new URLSearchParams({q: lib.q, style: lib.style, aspect: lib.aspect, page: lib.page, per_page: 12});
+  const r = await api(`/api/library?${qs}`);
+  lib.page = r.page;
+  opts($('#l-style'), ['', ...r.styles], lib.style);
+  $('#l-list').innerHTML = r.items.map((v) => `
+    <div class="item lib-item ${v.slug === lib.selected ? 'sel' : ''}" data-pick="${esc(v.slug)}">
+      <div><div class="t">${esc(v.title)}</div><div class="s muted">${esc(v.style || '-')} · ${esc(v.aspect_ratio)} · ${new Date(v.mtime * 1000).toLocaleDateString()}</div></div>
+      <div>${v.unverified ? `<span class="badge warn" title="unverified facts">${v.unverified} to verify</span>` : ''}
+        <span class="badge ${v.qa_ok === false ? 'bad' : v.qa_ok ? 'ok' : ''}">QA ${v.qa_ok == null ? 'n/a' : v.qa_ok ? 'pass' : 'issues'}</span></div></div>`).join('') || '<p class="muted">Nothing matches.</p>';
+  $('#l-page').textContent = `${r.total} video(s) · page ${r.page}/${r.pages}`;
+  $('#l-prev').disabled = r.page <= 1; $('#l-next').disabled = r.page >= r.pages;
+  $$('#l-list [data-pick]').forEach((el) => (el.onclick = () => act(() => openInspector(el.dataset.pick))));
+  if (!lib.selected && r.items[0]) await openInspector(r.items[0].slug);
+}
+loaders.library = async () => { await loadLibraryList(); };
+$('#l-q').oninput = (e) => { clearTimeout(libTimer); libTimer = setTimeout(() => { lib.q = e.target.value; lib.page = 1; act(loadLibraryList); }, 250); };
+$('#l-style').onchange = (e) => { lib.style = e.target.value; lib.page = 1; act(loadLibraryList); };
+$('#l-aspect').onchange = (e) => { lib.aspect = e.target.value; lib.page = 1; act(loadLibraryList); };
+$('#l-prev').onclick = () => { lib.page -= 1; act(loadLibraryList); };
+$('#l-next').onclick = () => { lib.page += 1; act(loadLibraryList); };
+async function openInspector(slug) {
+  lib.selected = slug;
+  $$('#l-list [data-pick]').forEach((el) => el.classList.toggle('sel', el.dataset.pick === slug));
+  const v = await api(`/api/library/${encodeURIComponent(slug)}`);
+  const m = v.meta; const qa = v.qa;
+  const frames = v.qa_frames.map((f) => {
+    const r = qa?.frames?.find((x) => x.frame === f.name); const cls = r ? (r.ok ? 'ok' : 'bad') : '';
+    return `<figure><img class="${cls}" loading="lazy" src="${file(f.src)}" data-zoom-src="${file(r && !r.ok && f.overlay ? f.overlay : f.src)}" title="${esc((r?.issues || []).join('; ') || 'ok')}"><figcaption>${esc(f.name)}${r && !r.ok ? ' ⚠' : ''}</figcaption></figure>`;
+  }).join('');
+  const issues = (qa?.frames || []).flatMap((f) => f.issues.map((i) => `${f.frame}: ${i}`));
+  const open = (v.claims || []).filter((c) => !c.verified).map((c) => c.text);
+  const facts = v.claims?.length ? open : (v.facts_to_verify || []);
+  const aspect = m.aspect_ratio;
+  $('#inspector').innerHTML = `
+    ${v.has_video !== false ? `<video id="player" controls preload="metadata" playsinline src="${v.stream}?t=${encodeURIComponent(T)}" class="${aspect === '16:9' ? 'wide' : ''}"></video>` : '<p class="muted">no video file</p>'}
+    <div class="row between"><h2>${esc(m.title)}</h2><span class="badge ${qa ? (qa.ok ? 'ok' : 'bad') : ''}">QA ${qa ? (qa.ok ? 'pass' : 'issues') : 'n/a'}</span></div>
+    ${qa ? `<div class="qa">${frames}</div>` : ''}
+    ${issues.length ? `<div class="warn">${issues.map(esc).join('<br>')}</div>` : ''}
+    ${facts.length ? `<div class="warn"><b>Fact check:</b> ${v.grounded ? 'checked against web sources, these are still unverified' : 'not web-checked'}. Verify before posting:<ul>${facts.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div>`
+      : (v.claims?.length ? '<div class="okbox">All numeric claims were verified against cited sources.</div>' : '')}
+    ${(v.sources || []).length ? `<div class="s muted">Sources: ${v.sources.map((s) => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`).join(' · ')}</div>` : ''}
+    <label>Title</label><input data-m="title" value="${esc(m.title)}">
+    <label>Description</label><textarea data-m="description" rows="4">${esc(m.description)}</textarea>
+    <div class="row"><div><label>Hashtags</label><input data-m="hashtags" value="${esc((m.hashtags || []).join(' '))}"></div>
+      <div><label>Hashtags / tags (comma)</label><input data-m="tags" value="${esc((m.tags || []).join(', '))}"></div></div>
+    <div class="actions"><button data-save>Save metadata</button><button data-regen>Regenerate with AI</button>
+      <a href="${v.download}?t=${encodeURIComponent(T)}" download><button class="primary" type="button">Download MP4</button></a></div>
+    <h3>Re-render</h3>
+    <div class="actions"><button data-rerender="16:9" ${aspect === '16:9' ? 'disabled' : ''}>Re-render 16:9</button><button data-rerender="9:16" ${aspect === '9:16' ? 'disabled' : ''}>Re-render 9:16</button>
+      <span class="s muted">replaces the current file</span></div>
+    <h3>Publish</h3>
+    <div class="row"><div><label>Published link (for analytics)</label><input data-pub-url value="${esc(v.published_url || '')}" placeholder="https://youtube.com/shorts/..."></div>
+      <div style="align-self:end"><button data-save-url>Save link</button></div></div>
+    ${v.stats ? `<div class="s muted">${v.stats.views ?? '?'} views · ${v.stats.likes ?? '?'} likes</div>` : ''}
+    <div class="actions">
+      <select data-p="platform" style="width:auto">${['youtube', 'instagram', 'tiktok'].map((p) => `<option>${p}</option>`).join('')}</select>
+      <select data-p="visibility" style="width:auto"><option value="">YouTube: default (${esc(m.visibility || 'unlisted')})</option><option>unlisted</option><option>private</option><option>public</option></select>
+      <label class="inline"><input type="checkbox" data-p="headed"> show browser</label>
+      <button class="primary" data-publish>Publish Now</button><button data-schedule>Add to Schedule</button></div>`;
+  const box = $('#inspector');
+  $$('[data-zoom-src]', box).forEach((i) => (i.onclick = () => zoom(i.dataset.zoomSrc)));
+  const val = (k) => $(`[data-m=${k}]`, box).value;
+  $('[data-save]', box).onclick = () => act(async () => {
+    await api(`/api/library/${encodeURIComponent(slug)}/meta`, {method: 'PUT', body: {title: val('title'), description: val('description'),
+      hashtags: val('hashtags').split(/[\s,]+/).filter(Boolean), tags: val('tags').split(',').map((s) => s.trim()).filter(Boolean)}});
+    toast('Metadata saved (kept on re-render)'); loadLibraryList();
   });
-};
+  $('[data-regen]', box).onclick = () => act(async () => watch(await api(`/api/library/${encodeURIComponent(slug)}/metadata`, {method: 'POST'}), 'AI metadata', () => openInspector(slug)));
+  $('[data-save-url]', box).onclick = () => act(async () => { await api(`/api/projects/${encodeURIComponent(slug)}/published`, {method: 'PUT', body: {url: $('[data-pub-url]', box).value}}); toast('Link saved'); });
+  $$('[data-rerender]', box).forEach((b) => (b.onclick = () => act(async () => {
+    if (!confirm(`Re-render "${m.title}" as ${b.dataset.rerender}? The current video file is replaced.`)) return;
+    const job = await api(`/api/projects/${encodeURIComponent(slug)}/render`, {method: 'POST', body: {aspect: b.dataset.rerender}});
+    watch(job, `Re-rendering ${b.dataset.rerender}`, () => openInspector(slug));
+  })));
+  $('[data-schedule]', box).onclick = () => { pendingSchedule = [slug]; showTab('schedule'); };
+  $('[data-publish]', box).onclick = () => act(async () => {
+    const platform = $('[data-p=platform]', box).value;
+    if (facts.length && !confirm('This video has unverified facts. Publish anyway?')) return;
+    if (!confirm(`Upload "${m.title}" to ${platform} now?`)) return;
+    const body = {platform, visibility: $('[data-p=visibility]', box).value, headed: $('[data-p=headed]', box).checked};
+    watch(await api(`/api/library/${encodeURIComponent(slug)}/publish`, {method: 'POST', body}), `Uploading to ${platform}`);
+  });
+}
+let pendingSchedule = null;
 
 // ---------------------------------------------------------------- SCHEDULE
 const toLocal = (v) => (v ? String(v).slice(0, 16) : '');

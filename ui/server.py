@@ -32,11 +32,12 @@ from fastapi.exceptions import RequestValidationError  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response  # noqa: E402
 
-from common import OUTPUT, PROJECTS, ROOT, read_json, settings, write_json  # noqa: E402
+from common import OUTPUT, PROJECTS, ROOT, paths, read_json, settings, write_json  # noqa: E402
 from llm.tasks import VISUAL_TYPES  # noqa: E402
 from pipeline.router import ROUTES  # noqa: E402
 from prompts.script_templates import REGISTRY  # noqa: E402
 from ui.jobs import JobManager  # noqa: E402
+from ui.streaming import download_file, stream_file  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
 TOKEN = secrets.token_urlsafe(24)
@@ -251,7 +252,7 @@ def projects() -> list[dict[str, Any]]:
                 "style": s.get("style", ""),
                 "aspect_ratio": s.get("aspect_ratio", ""),
                 "scenes": len(s.get("scenes", [])),
-                "rendered": (OUTPUT / f"{p.parent.name}.mp4").exists(),
+                "rendered": paths.find(p.parent.name, "mp4") is not None,
                 "needs_approval": bool(s.get("blueprint")) and s.get("approval") != "approved",
             }
         )
@@ -559,34 +560,115 @@ def sync_analytics() -> dict[str, Any]:
     return jobs.submit("llm", "sync analytics (yt-dlp)", ["analyzer/sync_analytics.py"]).public()
 
 
+def _library_item(slug: str, full: bool = False) -> dict[str, Any] | None:
+    meta_file = paths.find(slug, "meta")
+    if meta_file is None:
+        return None
+    meta = read_json(meta_file)
+    video, thumb = paths.find(slug, "mp4"), paths.find(slug, "thumb")
+    item: dict[str, Any] = {
+        "slug": slug,
+        "title": meta.get("title", slug),
+        "aspect_ratio": meta.get("aspect_ratio", ""),
+        "style": "",
+        "has_video": video is not None,
+        "mtime": meta_file.stat().st_mtime,
+        "qa_ok": meta.get("qa_ok"),
+    }
+    script_file = PROJECTS / slug / "script.json"
+    script = read_json(script_file) if script_file.exists() else {}
+    item["style"] = script.get("style", "")
+    claims = script.get("claims", [])
+    item["unverified"] = (
+        sum(1 for c in claims if not c.get("verified")) if claims else len(meta.get("facts_to_verify", []))
+    )
+    if not full:
+        return item
+    qa_dir = PROJECTS / slug / "qa"
+    report = read_json(qa_dir / "report.json") if (qa_dir / "report.json").exists() else None
+    frames = [f for f in ("cover", "hook", "early", "mid", "outro") if (qa_dir / f"{f}.png").exists()]
+    item.update(
+        {
+            "meta": meta,
+            "thumbnail": rel(thumb) if thumb else None,
+            "stream": f"/api/projects/{slug}/stream",
+            "download": f"/api/projects/{slug}/download",
+            "qa": report,
+            "qa_frames": [
+                {
+                    "name": f,
+                    "src": rel(qa_dir / f"{f}.png"),
+                    "overlay": rel(qa_dir / f"{f}.overlay.png") if (qa_dir / f"{f}.overlay.png").exists() else None,
+                }
+                for f in frames
+            ],
+            "claims": claims,
+            "grounded": script.get("grounded", False),
+            "sources": script.get("sources", []),
+            "facts_to_verify": meta.get("facts_to_verify", []),
+        }
+    )
+    from common import db
+
+    with db.connect() as conn:
+        row = conn.execute("SELECT url FROM published WHERE project_id=? AND platform='youtube'", (slug,)).fetchone()
+        stats = conn.execute("SELECT views, likes FROM analytics WHERE project_id=?", (slug,)).fetchone()
+    item["published_url"] = row["url"] if row else ""
+    item["stats"] = dict(stats) if stats else None
+    return item
+
+
 @app.get("/api/library")
-def library() -> list[dict[str, Any]]:
-    out = []
-    for meta_path in sorted(OUTPUT.glob("*.meta.json"), key=lambda p: p.stat().st_mtime, reverse=True):
-        slug = meta_path.name.removesuffix(".meta.json")
-        meta = read_json(meta_path)
-        qa_dir = PROJECTS / slug / "qa"
-        report = read_json(qa_dir / "report.json") if (qa_dir / "report.json").exists() else None
-        frames = [f for f in ("cover", "hook", "early", "mid", "outro") if (qa_dir / f"{f}.png").exists()]
-        out.append(
-            {
-                "slug": slug,
-                "meta": meta,
-                "video": rel(OUTPUT / f"{slug}.mp4") if (OUTPUT / f"{slug}.mp4").exists() else None,
-                "thumbnail": rel(OUTPUT / f"{slug}.thumb.jpg") if (OUTPUT / f"{slug}.thumb.jpg").exists() else None,
-                "qa": report,
-                "qa_frames": [
-                    {
-                        "name": f,
-                        "src": rel(qa_dir / f"{f}.png"),
-                        "overlay": rel(qa_dir / f"{f}.overlay.png") if (qa_dir / f"{f}.overlay.png").exists() else None,
-                    }
-                    for f in frames
-                ],
-                "mtime": meta_path.stat().st_mtime,
-            }
-        )
-    return out
+def library(q: str = "", style: str = "", aspect: str = "", page: int = 1, per_page: int = 12) -> dict[str, Any]:
+    """Light, paginated list (recent first). The Inspector loads one project at a time from /api/library/{slug}."""
+    per_page = max(1, min(per_page, 50))
+    needle = q.strip().lower()
+    items = []
+    for slug in paths.project_ids():
+        item = _library_item(slug)
+        if item is None:
+            continue
+        if needle and needle not in f"{slug} {item['title']}".lower():
+            continue
+        if style and item["style"] != style:
+            continue
+        if aspect and item["aspect_ratio"] != aspect:
+            continue
+        items.append(item)
+    total = len(items)
+    pages = max(1, -(-total // per_page))
+    page = max(1, min(page, pages))
+    return {
+        "items": items[(page - 1) * per_page : page * per_page],
+        "total": total,
+        "page": page,
+        "pages": pages,
+        "styles": sorted({i["style"] for i in items if i["style"]}),
+    }
+
+
+@app.get("/api/library/{slug}")
+def library_item(slug: str) -> dict[str, Any]:
+    item = _library_item(_slug_ok(slug), full=True)
+    if item is None:
+        raise HTTPException(404, "no rendered video with that id")
+    return item
+
+
+@app.get("/api/projects/{slug}/stream")
+def stream_video(slug: str, request: Request) -> Response:
+    video = paths.find(_slug_ok(slug), "mp4")
+    if video is None:
+        raise HTTPException(404, "no video file for that project")
+    return stream_file(video, request)
+
+
+@app.get("/api/projects/{slug}/download")
+def download_video(slug: str) -> Response:
+    video = paths.find(_slug_ok(slug), "mp4")
+    if video is None:
+        raise HTTPException(404, "no video file for that project")
+    return download_file(video, f"{slug}.mp4")
 
 
 EDITABLE_META = (
@@ -603,8 +685,8 @@ EDITABLE_META = (
 
 @app.put("/api/library/{slug}/meta")
 def edit_meta(slug: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
-    meta_path = OUTPUT / f"{_slug_ok(slug)}.meta.json"
-    if not meta_path.exists():
+    meta_path = paths.find(_slug_ok(slug), "meta")
+    if meta_path is None:
         raise HTTPException(404)
     meta = read_json(meta_path)
     edits = {k: body[k] for k in EDITABLE_META if k in body}
@@ -631,7 +713,10 @@ def publish(slug: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
     platform = body.get("platform")
     if platform not in ("youtube", "instagram", "tiktok"):
         raise HTTPException(400, "platform must be youtube, instagram or tiktok")
-    args = ["publisher/publish.py", "upload", f"output/{_slug_ok(slug)}.meta.json", "--platform", platform]
+    meta_file = paths.find(_slug_ok(slug), "meta")
+    if meta_file is None:
+        raise HTTPException(404, "render this video first")
+    args = ["publisher/publish.py", "upload", rel(meta_file), "--platform", platform]
     if body.get("visibility") in ("unlisted", "private", "public"):
         args += ["--visibility", body["visibility"]]
     if body.get("method") in ("cookie", "api"):
@@ -711,7 +796,10 @@ def add_schedule_job(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
     if body.get("visibility"):
         job["visibility"] = body["visibility"]
     if job["type"] == "upload_only":
-        job["meta"] = body.get("meta") or f"output/{body.get('project', jid)}.meta.json"
+        found = paths.find(str(body.get("project", jid)), "meta")
+        job["meta"] = body.get("meta") or (
+            rel(found) if found else f"output/{body.get('project', jid)}/{body.get('project', jid)}.meta.json"
+        )
     data["jobs"].append({k: v for k, v in job.items() if v is not None})
     _write_schedule(data)
     return {"ok": True}
