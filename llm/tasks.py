@@ -11,8 +11,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-from llm.providers import LLMError, Provider, get_provider
+from llm.providers import GroundingUnavailable, LLMError, Provider, get_provider
 from pipeline.router import ROUTES
+from prompts.script_templates import REGISTRY
 
 VISUAL_TYPES = ["headline", "stat", "bullets", "chart", "image", "quote", "flow", "map"]
 MOODS = ["chill", "documentary", "upbeat", "dramatic"]
@@ -61,7 +62,7 @@ SCRIPT_SCHEMA: dict[str, Any] = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "beat": {"type": "string", "enum": ["hook", "concept", "case_study", "takeaway", "other"]},
+                    "beat": {"type": "string", "description": "id of the template beat this scene belongs to"},
                     "narration": {"type": "string"},
                     "visual": {
                         "type": "object",
@@ -90,8 +91,61 @@ SCRIPT_SCHEMA: dict[str, Any] = {
             },
         },
         "facts_to_verify": {"type": "array", "items": {"type": "string"}},
+        "facts": {
+            "type": "array",
+            "description": "every factual claim with a number, date or name",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "claim": {"type": "string"},
+                    "supported_by_research": {
+                        "type": "boolean",
+                        "description": "true only if the research notes state it",
+                    },
+                },
+                "required": ["claim", "supported_by_research"],
+            },
+        },
     },
     "required": ["title", "cover_text", "scenes", "facts_to_verify"],
+}
+
+# Script mode: the narration is the user's, so the model only chooses visuals and a title.
+VISUALS_ONLY_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "cover_text": {"type": "string"},
+        "scenes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "index": {"type": "integer"},
+                    "beat": {"type": "string"},
+                    "visual": SCRIPT_SCHEMA["properties"]["scenes"]["items"]["properties"]["visual"],
+                    "media_query": {"type": "string"},
+                },
+                "required": ["index", "visual"],
+            },
+        },
+    },
+    "required": ["title", "scenes"],
+}
+
+CLAIMS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "claims": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"claim": {"type": "string"}, "supported": {"type": "boolean"}},
+                "required": ["claim", "supported"],
+            },
+        }
+    },
+    "required": ["claims"],
 }
 
 META_SCHEMA: dict[str, Any] = {
@@ -151,8 +205,61 @@ def normalize_visual(v: dict[str, Any], narration: str) -> dict[str, Any]:
     return out
 
 
+NUMBER_WORDS = r"(?:hundred|thousand|million|billion|trillion|percent|per cent|double|triple|half)"
+_NUMERIC = re.compile(rf"\d|\b{NUMBER_WORDS}\b", re.I)
+_SENTENCE = re.compile(r"(?<=[.!?\u2026])\s+")
+
+
+def numeric_claims(scenes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every sentence that states a number, as an unverified claim tied to its scene."""
+    out = []
+    for i, sc in enumerate(scenes):
+        for sentence in _SENTENCE.split(sc.get("narration", "")):
+            if _NUMERIC.search(sentence):
+                out.append({"text": _clip(sentence, 200), "scene": i, "verified": False, "sources": []})
+    return out
+
+
+def _digits(text: str) -> set[str]:
+    return set(re.findall(r"\d+(?:[,.]\d+)*", text))
+
+
+def build_claims(
+    scenes: list[dict[str, Any]],
+    facts: list[dict[str, Any]],
+    facts_to_verify: list[str],
+    grounding: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Merge model-listed facts with every numeric sentence. `verified` is true only when a grounded
+    research pass cited sources AND the model says the notes support the claim."""
+    grounded = bool(grounding and grounding.get("sources"))
+    urls = [s["url"] for s in (grounding or {}).get("sources", [])][:5]
+    claims: list[dict[str, Any]] = []
+    for f in facts:
+        text = _clip(f.get("claim"), 200)
+        if text:
+            ok = grounded and bool(f.get("supported_by_research"))
+            claims.append({"text": text, "scene": None, "verified": ok, "sources": urls if ok else []})
+    for text in facts_to_verify:
+        if _clip(text, 200) and not any(c["text"] == _clip(text, 200) for c in claims):
+            claims.append({"text": _clip(text, 200), "scene": None, "verified": False, "sources": []})
+    for extra in numeric_claims(scenes):
+        digits = _digits(extra["text"])
+        if any(c["text"] == extra["text"] or (digits and digits & _digits(c["text"])) for c in claims):
+            continue  # already covered by a model-listed claim
+        claims.append(extra)
+    return claims[:30]
+
+
 def normalize_script(
-    raw: dict[str, Any], *, style: str, aspect: str, mood: str, voice: dict[str, Any]
+    raw: dict[str, Any],
+    *,
+    style: str,
+    aspect: str,
+    mood: str,
+    voice: dict[str, Any],
+    grounding: dict[str, Any] | None = None,
+    max_scenes: int = 12,
 ) -> dict[str, Any]:
     scenes = []
     for s in raw.get("scenes") or []:
@@ -161,12 +268,14 @@ def normalize_script(
             continue
         scene: dict[str, Any] = {"narration": narration, "visual": normalize_visual(s.get("visual") or {}, narration)}
         if s.get("beat"):
-            scene["beat"] = s["beat"]
+            scene["beat"] = _clip(s["beat"], 32)
         if s.get("media_query"):
             scene["media_query"] = _clip(s["media_query"], 60)
         scenes.append(scene)
     if len(scenes) < 2:
         raise LLMError("model returned fewer than 2 usable scenes; try again or shorten the prompt")
+    scenes = scenes[:max_scenes]
+    claims = build_claims(scenes, raw.get("facts") or [], list(raw.get("facts_to_verify") or []), grounding)
     return {
         "title": _clip(raw.get("title") or "Untitled", 100),
         "cover_text": _clip(raw.get("cover_text") or raw.get("title") or "", 40),
@@ -175,8 +284,11 @@ def normalize_script(
         "aspect_ratio": aspect,
         "music_mood": raw.get("music_mood") if raw.get("music_mood") in MOODS else mood,
         "voice": voice,
-        "scenes": scenes[:12],
-        "facts_to_verify": [_clip(f, 200) for f in raw.get("facts_to_verify") or []][:12],
+        "scenes": scenes,
+        "grounded": bool(grounding and grounding.get("sources")),
+        "sources": (grounding or {}).get("sources", []),
+        "claims": claims,
+        "facts_to_verify": [c["text"] for c in claims if not c["verified"]][:12],
     }
 
 
@@ -314,6 +426,37 @@ def generate_ideas(
     return ideas
 
 
+def research_topic(brief: str, provider: Provider, *, enabled: bool = True) -> tuple[dict[str, Any] | None, str]:
+    """Web-grounded notes for case studies, stats and history.
+
+    Returns (research, status). `research` is None when grounding is off or unavailable (Gemini's
+    free tier has no Google Search grounding); status says why, for the UI and the log.
+    """
+    if not enabled:
+        return None, "grounding off"
+    query = (
+        f"Research for a short video: {brief}\n"
+        "Find the real case study, key dates, figures and who reported them. Give concise bullet notes, "
+        "each with the number or date and where it comes from. Do not guess."
+    )
+    try:
+        return provider.grounded_research(query, SYSTEM), "grounded with Google Search"
+    except GroundingUnavailable as exc:
+        return None, f"ungrounded ({str(exc)[:140]}); numeric claims are marked unverified"
+
+
+def _research_block(research: dict[str, Any] | None) -> str:
+    if not research:
+        return (
+            "No web research is available. Avoid precise statistics; list every number, date and name "
+            "you do state in `facts` with supported_by_research=false."
+        )
+    return (
+        "Web research notes (use these figures; mark supported_by_research=true only for claims they state):\n"
+        + str(research["notes"])[:6000]
+    )
+
+
 def write_script(
     *,
     brief: str,
@@ -325,21 +468,168 @@ def write_script(
     language: str = "English",
     blueprint: dict[str, Any] | None = None,
     provider: Provider | None = None,
+    grounding: bool = True,
+    on_status: Any = None,
 ) -> dict[str, Any]:
+    """Idea mode: the model writes the narration. Beats and visuals follow the style's own template."""
     provider = provider or get_provider()
+    template = REGISTRY.for_style(style, blueprint)
+    research, status = research_topic(brief, provider, enabled=grounding)
+    if on_status:
+        on_status(status)
     words = int(duration_sec * 2.6)  # ~155 wpm spoken
     prompt = (
         f"Write a {duration_sec}-second {aspect} video script in {language} (about {words} spoken words total).\n"
-        f"Brief: {brief}\n{_blueprint_brief(blueprint)}\n"
-        "Structure: hook (0-3 s), concept (to ~20 s), concrete case study with real figures (to ~45 s), "
-        "one-line takeaway that loops back to the hook.\n"
-        "Use 6-9 scenes, one idea per scene, 1-3 sentences each. Pick the visual that best shows each scene: "
-        "headline (<=6 words), stat (value + label), bullets (<=4 short items), chart (2-6 numeric points), "
-        "flow (3-4 one-word steps), quote, map (ISO A3 country codes), image (add media_query for an archive photo).\n"
+        f"Brief: {brief}\n{_blueprint_brief(blueprint)}\n{template.prompt_block(duration_sec)}\n"
+        "Use one idea per scene, 1-3 sentences each. Pick the visual that best shows each scene: "
+        f"{VISUAL_GUIDE}\n{_research_block(research)}\n"
         "cover_text is the frame-0 cover: 2-5 punchy words, no hashtags."
     )
     raw = provider.generate_json(prompt, SCRIPT_SCHEMA, SYSTEM)
-    return normalize_script(raw, style=style, aspect=aspect, mood=mood, voice=voice)
+    script = normalize_script(
+        raw,
+        style=style,
+        aspect=aspect,
+        mood=mood,
+        voice=voice,
+        grounding=research,
+        max_scenes=40 if template.family == "long_form" else 12,
+    )
+    script["template"] = template.family
+    return script
+
+
+VISUAL_GUIDE = (
+    "headline (<=6 words), stat (value + label), bullets (<=4 short items), chart (2-6 numeric points), "
+    "flow (3-4 one-word steps), quote, map (ISO A3 country codes), image (add media_query for an archive photo)."
+)
+
+
+def split_narration(text: str, *, min_words: int = 8, max_words: int = 20) -> list[str]:
+    """Cut the user's script into scene-sized pieces WITHOUT changing a single word.
+
+    Blank lines always start a new scene. Within a paragraph, sentences are grouped until a scene
+    holds enough words. Joining the result with spaces gives back the original (whitespace-normalized).
+    """
+    scenes: list[str] = []
+    for para in re.split(r"\n\s*\n", text.strip()):
+        flat = " ".join(para.split())
+        if not flat:
+            continue
+        current: list[str] = []
+        count = 0
+        for sentence in _SENTENCE.split(flat):
+            n = len(sentence.split())
+            if current and count >= min_words and count + n > max_words:
+                scenes.append(" ".join(current))
+                current, count = [], 0
+            current.append(sentence)
+            count += n
+        if current:
+            scenes.append(" ".join(current))
+    return scenes
+
+
+def script_from_text(
+    text: str,
+    *,
+    title: str = "",
+    style: str,
+    aspect: str,
+    mood: str,
+    voice: dict[str, Any],
+    provider: Provider | None = None,
+    grounding: bool = True,
+    on_status: Any = None,
+) -> dict[str, Any]:
+    """Script mode: keep the user's words verbatim for TTS. The model only picks visuals (and a title if empty)."""
+    pieces = split_narration(text)
+    if not pieces:
+        raise LLMError("the script is empty")
+    template = REGISTRY.for_style(style)
+    numbered = "\n".join(f"{i}: {p}" for i, p in enumerate(pieces))
+    prompt = (
+        f"Here is a finished {aspect} video script, already split into numbered scenes. DO NOT rewrite, shorten "
+        "or reorder any narration. For each scene index choose the best visual and, if useful, a beat id.\n"
+        f"{template.prompt_block(max(15, len(text.split()) * 60 // 155))}\n"
+        f"Visual options: {VISUAL_GUIDE}\n"
+        f"{'The title is fixed.' if title else 'Also write a punchy title (<=70 chars).'} "
+        "Also give cover_text: 2-5 punchy words from the script.\n"
+        f"SCENES:\n{numbered[:12000]}"
+    )
+    picked: dict[int, dict[str, Any]] = {}
+    raw: dict[str, Any] = {}
+    try:
+        provider = provider or get_provider()
+        raw = provider.generate_json(prompt, VISUALS_ONLY_SCHEMA, SYSTEM)
+        picked = {int(s["index"]): s for s in raw.get("scenes") or [] if str(s.get("index", "")).isdigit()}
+    except Exception as exc:  # noqa: BLE001 - narration is safe; fall back to text-derived visuals
+        if on_status:
+            on_status(f"visual selection by the model failed ({str(exc)[:120]}); using simple visuals")
+    scenes = []
+    for i, narration in enumerate(pieces):
+        p = picked.get(i, {})
+        scene: dict[str, Any] = {"narration": narration, "visual": normalize_visual(p.get("visual") or {}, narration)}
+        beat = (
+            p.get("beat")
+            or template.beat_ids[min(len(template.beat_ids) - 1, i * len(template.beat_ids) // len(pieces))]
+        )
+        scene["beat"] = _clip(beat, 32)
+        if p.get("media_query"):
+            scene["media_query"] = _clip(p["media_query"], 60)
+        scenes.append(scene)
+    final_title = _clip(title or raw.get("title") or "Untitled video", 100)
+    research, status = (None, "grounding off")
+    claims = numeric_claims(scenes)
+    if grounding and claims:
+        research, status = _verify_claims(claims, provider)
+    if on_status:
+        on_status(status)
+    return {
+        "title": final_title,
+        "cover_text": _clip(raw.get("cover_text") or final_title, 40),
+        "description": "",
+        "style": style,
+        "aspect_ratio": aspect,
+        "music_mood": mood,
+        "voice": voice,
+        "scenes": scenes,
+        "input_mode": "script",
+        "template": template.family,
+        "grounded": bool(research),
+        "sources": (research or {}).get("sources", []),
+        "claims": claims,
+        "facts_to_verify": [c["text"] for c in claims if not c["verified"]][:12],
+    }
+
+
+def _verify_claims(claims: list[dict[str, Any]], provider: Provider | None) -> tuple[dict[str, Any] | None, str]:
+    """Fact-check the user's own numbers with web grounding. Mutates `claims` (verified + sources)."""
+    if provider is None:
+        return None, "ungrounded (no provider)"
+    listing = "\n".join(f"- {c['text']}" for c in claims)
+    try:
+        research = provider.grounded_research(
+            f"Fact-check these claims using web sources. Say which are accurate and give the correct figure if not:\n{listing}",
+            SYSTEM,
+        )
+        verdict = provider.generate_json(
+            f"Research notes:\n{research['notes'][:6000]}\n\nFor each claim below, supported=true only if the notes "
+            f"clearly confirm it.\n{listing}",
+            CLAIMS_SCHEMA,
+            SYSTEM,
+        )
+    except GroundingUnavailable as exc:
+        return None, f"ungrounded ({str(exc)[:140]}); numeric claims are marked unverified"
+    except LLMError as exc:
+        return None, f"claim check failed ({str(exc)[:140]}); numeric claims are marked unverified"
+    urls = [s["url"] for s in research["sources"]][:5]
+    supported = [_clip(v.get("claim"), 200) for v in verdict.get("claims", []) if v.get("supported")]
+    for c in claims:
+        digits = _digits(c["text"])
+        if any(s == c["text"] or (digits and digits <= _digits(s)) for s in supported):
+            c["verified"], c["sources"] = True, urls
+    return research, "grounded with Google Search"
 
 
 def write_metadata(

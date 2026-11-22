@@ -26,27 +26,39 @@
     <section id="tab-create" class="tab active">
       <div class="grid2">
         <div class="card">
-          <h2>New video from a prompt</h2>
-          <p class="muted">The language model (Settings) writes a 45-58 s hook / concept / case study / takeaway script. Review it, then render.</p>
-          <label>What should the video explain?</label>
-          <textarea id="c-prompt" rows="3" placeholder="e.g. Why Costco sells hot dogs for $1.50 (and makes money)"></textarea>
+          <h2>New video</h2>
+          <div class="segmented" id="c-mode" role="tablist">
+            <button data-mode="idea" class="active" role="tab">From Idea <small>(AI writes the script)</small></button>
+            <button data-mode="script" role="tab">From Script <small>(keep my exact words)</small></button>
+          </div>
+          <div id="c-idea-box">
+            <p class="muted">The language model (Settings) writes a script using the beats of the chosen style.</p>
+            <label>What should the video explain?</label>
+            <textarea id="c-prompt" rows="3" placeholder="e.g. Why Costco sells hot dogs for $1.50 (and makes money)"></textarea>
+          </div>
+          <div id="c-script-box" hidden>
+            <p class="muted">Your words are used exactly as written for the voice-over. The script is only split into scenes; the AI may pick visuals but never rewrites narration. Blank lines always start a new scene.</p>
+            <label>Your script</label>
+            <textarea id="c-script" rows="8" placeholder="Paste the full narration here..."></textarea>
+          </div>
           <div class="row">
-            <div><label>Slug (folder name)</label><input id="c-slug" placeholder="auto from the video title"></div>
-            <div><label>Length (s)</label><input id="c-duration" type="number" min="15" max="180" value="50"></div>
+            <div><label>Video title <small class="muted">(becomes the folder name)</small></label><input id="c-title" placeholder="leave empty to let the AI suggest one"></div>
+            <div><label>Length (s)</label><input id="c-duration" type="number" min="15" max="1800" value="50"></div>
           </div>
           <div class="row">
             <div><label>Style</label><select id="c-style"></select></div>
             <div><label>Aspect</label><select id="c-aspect"></select></div>
             <div><label>Music mood</label><select id="c-mood"></select></div>
           </div>
+          <div id="c-template" class="s muted"></div>
           <label>Platforms</label>
           <div id="c-platforms" class="checks"></div>
           <div class="actions">
             <button id="c-write" class="primary">Write script</button>
+            <label class="inline" title="Gemini free tier cannot ground; then numeric claims are marked unverified"><input type="checkbox" id="c-ground" checked> check facts with Google Search</label>
             <label class="inline"><input type="checkbox" id="c-overwrite"> overwrite existing</label>
           </div>
         </div>
-
         <div class="card">
           <h2>Projects</h2>
           <p class="muted">Pick a project to edit its script or render it.</p>
@@ -65,7 +77,9 @@
           </div>
         </div>
         <div id="facts" class="warn" hidden></div>
+        <div id="sources" class="s muted" hidden></div>
         <div id="scenes" class="scenes"></div>
+        <div class="actions"><button id="e-add">+ Add Scene</button></div>
         <details><summary>Raw script.json</summary><textarea id="e-json" rows="18" class="mono"></textarea></details>
       </div>
     </section>

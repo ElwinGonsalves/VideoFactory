@@ -95,12 +95,28 @@ setInterval(refreshJobs, 4000);
 
 // ---------------------------------------------------------------- CREATE
 let current = null; // {slug, script}
+let createMode = 'idea';
+function setMode(mode) {
+  createMode = mode;
+  $$('#c-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+  $('#c-idea-box').hidden = mode !== 'idea'; $('#c-script-box').hidden = mode !== 'script';
+  $('#c-duration').closest('div').hidden = mode === 'script';
+  $('#c-write').textContent = mode === 'script' ? 'Split into scenes' : 'Write script';
+}
+$$('#c-mode button').forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
+function showTemplate() {
+  const t = OPTS?.templates?.[$('#c-style').value];
+  $('#c-template').textContent = t ? `Beats: ${t.beats.map((b) => b.label || b.id).join(' → ')}` : '';
+  const forced = t && t.family === 'long_form' ? t.default_aspect : null;
+  if (forced) $('#c-aspect').value = forced;
+}
 loaders.create = async () => {
   OPTS = OPTS || (await api('/api/options'));
   const d = OPTS.defaults;
   if (!$('#c-style').options.length) {
     opts($('#c-style'), OPTS.styles, d.style); opts($('#c-aspect'), OPTS.aspects, d.aspect_ratio); opts($('#c-mood'), OPTS.moods, d.music_mood);
     checks($('#c-platforms'), OPTS.platforms, ['youtube']); $('#c-duration').value = d.target_duration_sec;
+    $('#c-ground').checked = OPTS.grounding !== false; $('#c-style').onchange = showTemplate; showTemplate();
   }
   const list = await api('/api/projects');
   $('#projects').innerHTML = list.map((p) => `
@@ -111,44 +127,82 @@ loaders.create = async () => {
   $$('[data-open]').forEach((b) => (b.onclick = () => act(() => openProject(b.dataset.open))));
 };
 $('#c-write').onclick = () => act(async () => {
-  const prompt = $('#c-prompt').value.trim(); if (!prompt) throw new Error('Write a prompt first');
-  const body = {prompt, slug: $('#c-slug').value.trim(), style: $('#c-style').value, aspect: $('#c-aspect').value, mood: $('#c-mood').value,
-    duration: +$('#c-duration').value, platforms: checked($('#c-platforms')), overwrite: $('#c-overwrite').checked};
+  const body = {mode: createMode, title: $('#c-title').value.trim(), style: $('#c-style').value, aspect: $('#c-aspect').value, mood: $('#c-mood').value,
+    duration: +$('#c-duration').value, platforms: checked($('#c-platforms')), overwrite: $('#c-overwrite').checked, grounding: $('#c-ground').checked};
+  if (createMode === 'script') {
+    body.script = $('#c-script').value.trim(); if (!body.script) throw new Error('Paste your script first');
+  } else {
+    body.prompt = $('#c-prompt').value.trim(); if (!body.prompt) throw new Error('Write a prompt first');
+  }
   const job = await api('/api/projects/write', {method: 'POST', body});
-  watch(job, 'Writing script', async (status) => {
+  watch(job, createMode === 'script' ? 'Splitting your script' : 'Writing script', async (status) => {
     if (status !== 'done') return toast('Script writing failed: see log', true);
     const text = $('#log').textContent; const m = text.match(/SCRIPT .*[\\/]projects[\\/]([^\\/]+)[\\/]script\.json/);
     await loaders.create(); if (m) openProject(m[1]);
   });
 });
+const grow = (ta) => { ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight + 2}px`; };
+function renderEditor() {
+  const script = current.script;
+  const claims = script.claims || [];
+  const open = claims.filter((c) => !c.verified).map((c) => c.text);
+  const facts = claims.length ? open : (script.facts_to_verify || []);
+  $('#facts').hidden = !facts.length;
+  $('#facts').innerHTML = facts.length ? `<b>Unverified facts (${script.grounded ? 'checked with Google Search' : 'not checked: no web grounding'}). Videos with unverified facts are held as “needs review” by the Safe-Publish Gate:</b><ul>${facts.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>` : '';
+  const src = script.sources || [];
+  $('#sources').hidden = !src.length;
+  $('#sources').innerHTML = src.length ? `Sources: ${src.map((s) => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`).join(' · ')}` : '';
+  const types = OPTS.visual_types || [];
+  $('#scenes').innerHTML = (script.scenes || []).map((s, i) => `
+    <div class="scene" data-scene="${i}">
+      <div class="row between"><div class="k">${i + 1}. ${esc(s.beat || '')}</div>
+        <div class="actions"><select data-i="${i}" data-f="type" style="width:auto">${types.map((t) => `<option ${t === (s.visual?.type || 'headline') ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+          <button class="small" data-up="${i}" ${i === 0 ? 'disabled' : ''} title="Move up">↑</button>
+          <button class="small" data-down="${i}" ${i === script.scenes.length - 1 ? 'disabled' : ''} title="Move down">↓</button>
+          <button class="small" data-delete="${i}" title="Delete scene">Delete</button></div></div>
+      <textarea class="auto" data-i="${i}" data-f="narration" rows="2">${esc(s.narration)}</textarea>
+      <input data-i="${i}" data-f="heading" value="${esc(s.visual?.heading || '')}" placeholder="on-screen heading"></div>`).join('');
+  $('#e-json').value = JSON.stringify(script, null, 2);
+  $$('#scenes textarea.auto').forEach(grow);
+  $$('#scenes [data-i]').forEach((el) => {
+    const edit = () => {
+      const sc = current.script.scenes[+el.dataset.i];
+      if (el.dataset.f === 'narration') { sc.narration = el.value; grow(el); }
+      else if (el.dataset.f === 'type') { sc.visual = {...(sc.visual || {}), type: el.value}; }
+      else { sc.visual = sc.visual || {type: 'headline'}; sc.visual.heading = el.value; }
+      $('#e-json').value = JSON.stringify(current.script, null, 2);
+    };
+    el.oninput = edit; if (el.tagName === 'SELECT') el.onchange = edit;
+  });
+  const move = (i, j) => { const a = current.script.scenes; [a[i], a[j]] = [a[j], a[i]]; renderEditor(); };
+  $$('[data-up]').forEach((b) => (b.onclick = () => move(+b.dataset.up, +b.dataset.up - 1)));
+  $$('[data-down]').forEach((b) => (b.onclick = () => move(+b.dataset.down, +b.dataset.down + 1)));
+  $$('[data-delete]').forEach((b) => (b.onclick = () => {
+    if (current.script.scenes.length <= 1) return toast('A video needs at least one scene.', true);
+    current.script.scenes.splice(+b.dataset.delete, 1); renderEditor();
+  }));
+}
+$('#e-add').onclick = () => { if (!current) return; current.script.scenes.push({beat: 'other', narration: '', visual: {type: 'headline', heading: ''}}); renderEditor(); };
 async function openProject(slug) {
+  OPTS = OPTS || (await api('/api/options'));
   const script = await api(`/api/projects/${encodeURIComponent(slug)}`);
   current = {slug, script};
   $('#editor-card').hidden = false; $('#editor-title').textContent = `Script: ${script.title || slug}`;
-  const facts = script.facts_to_verify || [];
-  $('#facts').hidden = !facts.length;
-  $('#facts').innerHTML = facts.length ? `<b>Check these facts before publishing:</b><ul>${facts.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>` : '';
-  $('#scenes').innerHTML = (script.scenes || []).map((s, i) => `
-    <div class="scene"><div class="k">${i + 1}. ${esc(s.beat || '')} · ${esc(s.visual?.type || 'headline')}</div>
-      <textarea rows="3" data-i="${i}" data-f="narration">${esc(s.narration)}</textarea>
-      <input data-i="${i}" data-f="heading" value="${esc(s.visual?.heading || '')}" placeholder="on-screen heading"></div>`).join('');
-  $('#e-json').value = JSON.stringify(script, null, 2);
-  $$('#scenes [data-i]').forEach((el) => (el.oninput = () => {
-    const sc = current.script.scenes[+el.dataset.i];
-    if (el.dataset.f === 'narration') sc.narration = el.value; else { sc.visual = sc.visual || {type: 'headline'}; sc.visual.heading = el.value; }
-    $('#e-json').value = JSON.stringify(current.script, null, 2);
-  }));
+  renderEditor();
   $('#editor-card').scrollIntoView({behavior: 'smooth'});
 }
 $('#e-json').oninput = () => { try { current.script = JSON.parse($('#e-json').value); } catch { /* keep typing */ } };
-async function saveProject() { await api(`/api/projects/${encodeURIComponent(current.slug)}`, {method: 'PUT', body: current.script}); }
+async function saveProject() {
+  const empty = current.script.scenes.findIndex((s) => !String(s.narration || '').trim());
+  if (empty >= 0) throw new Error(`Scene ${empty + 1} has no narration. Write it or delete the scene.`);
+  await api(`/api/projects/${encodeURIComponent(current.slug)}`, {method: 'PUT', body: current.script});
+}
 $('#e-save').onclick = () => act(async () => { await saveProject(); toast('Saved'); loaders.create(); });
 $('#e-render').onclick = () => act(async () => {
   await saveProject();
   const job = await api(`/api/projects/${encodeURIComponent(current.slug)}/render`, {method: 'POST', body: {safe_zones: $('#e-safe').checked, strict_qa: $('#e-strict').checked}});
   watch(job, `Rendering ${current.slug}`, (s) => { toast(s === 'done' ? 'Render finished: see Library' : 'Render failed: see log', s !== 'done'); if (s === 'done') showTab('library'); });
 });
-
 // ---------------------------------------------------------------- IDEAS
 loaders.ideas = async () => {
   const runs = await api('/api/ideas');

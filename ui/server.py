@@ -33,7 +33,9 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
 
 from common import OUTPUT, PROJECTS, ROOT, read_json, settings, write_json  # noqa: E402
+from llm.tasks import VISUAL_TYPES  # noqa: E402
 from pipeline.router import ROUTES  # noqa: E402
+from prompts.script_templates import REGISTRY  # noqa: E402
 from ui.jobs import JobManager  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -226,6 +228,9 @@ def options() -> dict[str, Any]:
         "caption_styles": ["word_highlight", "phrase_box", "minimal_editorial", "none"],
         "platforms": ["youtube", "instagram", "tiktok"],
         "defaults": settings.load()["defaults"],
+        "visual_types": VISUAL_TYPES,
+        "templates": {s: REGISTRY.for_style(s).public() for s in sorted(ROUTES)},
+        "grounding": settings.load()["llm"].get("grounding", True),
     }
 
 
@@ -273,10 +278,32 @@ def save_project(slug: str, script: dict[str, Any] = Body(...)) -> dict[str, Any
 
 @app.post("/api/projects/write")
 def write_script_job(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
-    prompt = str(body.get("prompt", "")).strip()
-    if not prompt:
-        raise HTTPException(400, "prompt is required")
-    args = ["-m", "llm.cli", "write-script", "--prompt", prompt]
+    """mode=idea: the model writes the script. mode=script: your text is kept verbatim."""
+    mode = body.get("mode", "idea")
+    if mode not in ("idea", "script"):
+        raise HTTPException(400, "mode must be idea or script")
+    args = ["-m", "llm.cli", "write-script", "--mode", mode]
+    label = ""
+    if mode == "script":
+        text = str(body.get("script", "")).strip()
+        if len(text.split()) < 8:
+            raise HTTPException(400, "paste your script (at least a couple of sentences)")
+        if len(text) > 200_000:
+            raise HTTPException(413, "script is too long")
+        inbox = ROOT / "ui" / "logs" / "inputs"  # long scripts exceed the Windows command-line limit
+        inbox.mkdir(parents=True, exist_ok=True)
+        path = inbox / f"{secrets.token_hex(6)}.txt"
+        path.write_text(text, encoding="utf-8")
+        args += ["--text-file", str(path)]
+        label = str(body.get("title") or text[:40])
+    else:
+        prompt = str(body.get("prompt", "")).strip()
+        if not prompt:
+            raise HTTPException(400, "write what the video should explain")
+        args += ["--prompt", prompt]
+        label = prompt[:60]
+    if str(body.get("title", "")).strip():
+        args += ["--title", str(body["title"]).strip()[:100]]
     for key, flag in (("slug", "--slug"), ("style", "--style"), ("aspect", "--aspect"), ("mood", "--mood")):
         if body.get(key):
             args += [flag, str(body[key])]
@@ -286,8 +313,9 @@ def write_script_job(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
         args += ["--platforms", ",".join(body["platforms"])]
     if body.get("overwrite"):
         args.append("--overwrite")
-    job = jobs.submit("llm", f"write script: {prompt[:60]}", args)
-    return job.public()
+    if "grounding" in body:
+        args.append("--ground" if body["grounding"] else "--no-ground")
+    return jobs.submit("llm", f"{'keep script' if mode == 'script' else 'write script'}: {label}", args).public()
 
 
 @app.post("/api/projects/{slug}/render")

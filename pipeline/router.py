@@ -33,6 +33,11 @@ ROUTES: dict[str, Route] = {
     "clip_repurpose": Route("clipper", None, "word_highlight"),
     "hybrid_or_custom": Route("remotion", "UniversalCustom", "word_highlight", "concept"),
     "openmontage": Route("openmontage", None, "minimal_editorial", "vox", "paper_slide", "vox"),
+    # v2 styles. stickman scenes are SVG figures drawn by the whiteboard look; long_form is a 16:9 chaptered video;
+    # reference_blueprint takes captions/transition from the saved blueprint in make_video.
+    "stickman": Route("remotion", "WhiteboardDraw", "phrase_box", transition="hard_cut", look="whiteboard"),
+    "long_form": Route("remotion", "ConceptExplainer", "phrase_box", transition="fade"),
+    "reference_blueprint": Route("remotion", "UniversalCustom", "word_highlight", "concept", "fade"),
 }
 
 BLUEPRINT_ENGINE_TO_STYLE = {

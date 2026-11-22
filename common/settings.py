@@ -41,6 +41,9 @@ DEFAULTS: dict[str, Any] = {
         "ollama_model": "qwen2.5:7b",
         "openai_model": "gpt-4o-mini",
         "temperature": 0.8,
+        # Google Search grounding for case studies/stats. Free-tier Gemini refuses it; scripts then fall back
+        # to ungrounded writing and every numeric claim is marked unverified.
+        "grounding": True,
     },
     "defaults": {
         "aspect_ratio": "9:16",

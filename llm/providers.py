@@ -37,6 +37,10 @@ class LLMError(RuntimeError):
     """Raised with a message the UI can show as-is."""
 
 
+class GroundingUnavailable(LLMError):
+    """Google Search grounding is not available (free tier, no permission, provider without it)."""
+
+
 def _post(url: str, payload: dict[str, Any], headers: dict[str, str], attempts: int = 4) -> requests.Response:
     last: requests.Response | None = None
     for i in range(attempts):
@@ -116,6 +120,10 @@ class Provider:
 
     def vision_json(self, prompt: str, schema: dict[str, Any], images: list[Path], system: str = "") -> Any:
         raise LLMError(f"{self.name} vision is not supported; use Gemini or a vision model")
+
+    def grounded_research(self, query: str, system: str = "") -> dict[str, Any]:
+        """Web-grounded notes + cited sources, or GroundingUnavailable. Only Gemini implements it."""
+        raise GroundingUnavailable(f"{self.name} has no web grounding")
 
     def ping(self) -> str:
         """Cheap connectivity test for the Settings page."""
@@ -206,6 +214,36 @@ class GeminiProvider(Provider):
                 return extract_json(text)
             errors.append(f"{model}: HTTP {res.status_code} {res.text[:120]}")
         raise LLMError("Gemini vision failed. " + " | ".join(errors[-3:]))
+
+    def grounded_research(self, query: str, system: str = "") -> dict[str, Any]:
+        """generateContent with the google_search tool. Free-tier keys are refused; callers then fall back.
+
+        Returns {"notes": text, "sources": [{"title", "url"}], "queries": [...]}.
+        """
+        payload: dict[str, Any] = {
+            "contents": [{"role": "user", "parts": [{"text": query}]}],
+            "tools": [{"google_search": {}}],
+            "generationConfig": {"temperature": 0.2},
+        }
+        if system:
+            payload["systemInstruction"] = {"parts": [{"text": system}]}
+        res = _post(f"{self.base}/models/{self.model}:generateContent", payload, self._headers(), attempts=2)
+        if not res.ok:
+            raise GroundingUnavailable(f"Google Search grounding refused (HTTP {res.status_code}): {res.text[:160]}")
+        body = res.json()
+        cand = ((body.get("candidates") or [{}])[0]) if isinstance(body, dict) else {}
+        meta = cand.get("groundingMetadata") or {}
+        sources, seen = [], set()
+        for chunk in meta.get("groundingChunks") or []:
+            web = chunk.get("web") or {}
+            url = web.get("uri")
+            if url and url not in seen:
+                seen.add(url)
+                sources.append({"title": str(web.get("title") or url)[:120], "url": url})
+        notes = _find_text(cand.get("content") or {})
+        if not notes or not sources:
+            raise GroundingUnavailable("the model answered without citing any web source")
+        return {"notes": notes, "sources": sources, "queries": list(meta.get("webSearchQueries") or [])}
 
     def list_models(self) -> list[str]:
         res = requests.get(f"{self.base}/models", headers=self._headers(), timeout=30)
