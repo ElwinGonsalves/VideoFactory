@@ -1,0 +1,314 @@
+{
+  "tracks": [
+    {
+      "file": "upbeat/Aurora on the Boulevard - National Sweetheart.mp3",
+      "mood": "upbeat",
+      "upstream_mood": "happy",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Aurora on the Boulevard",
+      "artist": "National Sweetheart"
+    },
+    {
+      "file": "upbeat/Baby Animals Playing - Joel Cummins.mp3",
+      "mood": "upbeat",
+      "upstream_mood": "funny",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Baby Animals Playing",
+      "artist": "Joel Cummins"
+    },
+    {
+      "file": "upbeat/Banjo Doops - Joel Cummins.mp3",
+      "mood": "upbeat",
+      "upstream_mood": "funny",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Banjo Doops",
+      "artist": "Joel Cummins"
+    },
+    {
+      "file": "dramatic/Buckle Up - Jeremy Korpas.mp3",
+      "mood": "dramatic",
+      "upstream_mood": "angry",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Buckle Up",
+      "artist": "Jeremy Korpas"
+    },
+    {
+      "file": "upbeat/Cafecito por la Manana - Cumbia Deli.mp3",
+      "mood": "upbeat",
+      "upstream_mood": "happy",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Cafecito por la Manana",
+      "artist": "Cumbia Deli"
+    },
+    {
+      "file": "chill/Champion - Telecasted.mp3",
+      "mood": "chill",
+      "upstream_mood": "chill",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Champion",
+      "artist": "Telecasted"
+    },
+    {
+      "file": "documentary/Crystaline - Quincas Moreira.mp3",
+      "mood": "documentary",
+      "upstream_mood": "contemplative",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Crystaline",
+      "artist": "Quincas Moreira"
+    },
+    {
+      "file": "dramatic/Curse of the Witches - Jimena Contreras.mp3",
+      "mood": "dramatic",
+      "upstream_mood": "dark",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Curse of the Witches",
+      "artist": "Jimena Contreras"
+    },
+    {
+      "file": "upbeat/Delayed Baggage - Ryan Stasik.mp3",
+      "mood": "upbeat",
+      "upstream_mood": "euphoric",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Delayed Baggage",
+      "artist": "Ryan Stasik"
+    },
+    {
+      "file": "documentary/Final Soliloquy - Asher Fulero.mp3",
+      "mood": "documentary",
+      "upstream_mood": "contemplative",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Final Soliloquy",
+      "artist": "Asher Fulero"
+    },
+    {
+      "file": "documentary/Heartbeat Of The Wind - Asher Fulero.mp3",
+      "mood": "documentary",
+      "upstream_mood": "sad",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Heartbeat Of The Wind",
+      "artist": "Asher Fulero"
+    },
+    {
+      "file": "dramatic/Honey, I Dismembered The Kids - Ezra Lipp.mp3",
+      "mood": "dramatic",
+      "upstream_mood": "dark",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Honey, I Dismembered The Kids",
+      "artist": "Ezra Lipp"
+    },
+    {
+      "file": "chill/Hopeful - Nat Keefe.mp3",
+      "mood": "chill",
+      "upstream_mood": "hopeful",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Hopeful",
+      "artist": "Nat Keefe"
+    },
+    {
+      "file": "chill/Hopeful Freedom - Asher Fulero.mp3",
+      "mood": "chill",
+      "upstream_mood": "hopeful",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Hopeful Freedom",
+      "artist": "Asher Fulero"
+    },
+    {
+      "file": "documentary/Hopeless - Jimena Contreras.mp3",
+      "mood": "documentary",
+      "upstream_mood": "sad",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Hopeless",
+      "artist": "Jimena Contreras"
+    },
+    {
+      "file": "dramatic/Jetski - Telecasted.mp3",
+      "mood": "dramatic",
+      "upstream_mood": "uneasy",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Jetski",
+      "artist": "Telecasted"
+    },
+    {
+      "file": "upbeat/Like It Loud - Dyalla.mp3",
+      "mood": "upbeat",
+      "upstream_mood": "euphoric",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Like It Loud",
+      "artist": "Dyalla"
+    },
+    {
+      "file": "upbeat/Name The Time And Place - Telecasted.mp3",
+      "mood": "upbeat",
+      "upstream_mood": "excited",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Name The Time And Place",
+      "artist": "Telecasted"
+    },
+    {
+      "file": "dramatic/Night Hunt - Jimena Contreras.mp3",
+      "mood": "dramatic",
+      "upstream_mood": "dark",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Night Hunt",
+      "artist": "Jimena Contreras"
+    },
+    {
+      "file": "documentary/No.2 Remembering Her - Esther Abrami.mp3",
+      "mood": "documentary",
+      "upstream_mood": "melancholic",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "No.2 Remembering Her",
+      "artist": "Esther Abrami"
+    },
+    {
+      "file": "chill/Oh Please - Telecasted.mp3",
+      "mood": "chill",
+      "upstream_mood": "chill",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Oh Please",
+      "artist": "Telecasted"
+    },
+    {
+      "file": "dramatic/On The Hunt - Andrew Langdon.mp3",
+      "mood": "dramatic",
+      "upstream_mood": "uneasy",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "On The Hunt",
+      "artist": "Andrew Langdon"
+    },
+    {
+      "file": "upbeat/Organic Guitar House - Dyalla.mp3",
+      "mood": "upbeat",
+      "upstream_mood": "euphoric",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Organic Guitar House",
+      "artist": "Dyalla"
+    },
+    {
+      "file": "dramatic/Phantom - Density & Time.mp3",
+      "mood": "dramatic",
+      "upstream_mood": "uneasy",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Phantom",
+      "artist": "Density & Time"
+    },
+    {
+      "file": "documentary/Restless Heart - Jimena Contreras.mp3",
+      "mood": "documentary",
+      "upstream_mood": "sad",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Restless Heart",
+      "artist": "Jimena Contreras"
+    },
+    {
+      "file": "upbeat/Seagull - Telecasted.mp3",
+      "mood": "upbeat",
+      "upstream_mood": "funny",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Seagull",
+      "artist": "Telecasted"
+    },
+    {
+      "file": "dramatic/Sinister - Anno Domini Beats.mp3",
+      "mood": "dramatic",
+      "upstream_mood": "dark",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Sinister",
+      "artist": "Anno Domini Beats"
+    },
+    {
+      "file": "documentary/Sly Sky - Telecasted.mp3",
+      "mood": "documentary",
+      "upstream_mood": "melancholic",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Sly Sky",
+      "artist": "Telecasted"
+    },
+    {
+      "file": "upbeat/Touch - Anno Domini Beats.mp3",
+      "mood": "upbeat",
+      "upstream_mood": "happy",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Touch",
+      "artist": "Anno Domini Beats"
+    },
+    {
+      "file": "dramatic/Traversing - Godmode.mp3",
+      "mood": "dramatic",
+      "upstream_mood": "dark",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Traversing",
+      "artist": "Godmode"
+    },
+    {
+      "file": "dramatic/Twin Engines - Jeremy Korpas.mp3",
+      "mood": "dramatic",
+      "upstream_mood": "angry",
+      "bpm": null,
+      "license": "YouTube Audio Library License (free, no attribution required)",
+      "source": "gyoridavid/short-video-maker (YouTube Audio Library)",
+      "title": "Twin Engines",
+      "artist": "Jeremy Korpas"
+    }
+  ]
+}
