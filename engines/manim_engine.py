@@ -34,4 +34,4 @@ def render(script: dict[str, Any], run_dir: Path, out_mp4: Path, aspect: str) ->
     )  # fmt: skip
     video = next(media.rglob("scene.mp4"))
     audio = run_dir / "mixed_master.wav"
-    return mux_audio(video, audio, out_mp4, media_duration(audio))
+    return mux_audio(video, audio, out_mp4, media_duration(audio), captions=run_dir / "captions.json", aspect=aspect)

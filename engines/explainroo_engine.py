@@ -43,8 +43,13 @@ def render(script: dict[str, Any], run_dir: Path, out_mp4: Path, aspect: str) ->
     conf.update({"size": SIZES[aspect], "music": None, "title": script.get("title", conf.get("title", ""))})
     video_json.write_text(json.dumps({k: v for k, v in conf.items() if v is not None}, indent=2), encoding="utf-8")
 
-    _cli("render", str(project), cwd=ROOT)
-    rendered = max(project.rglob("*.mp4"), key=lambda p: p.stat().st_mtime)
+    # 8 parallel workers (explainroo's default) each pipe frames into FFmpeg; on a 16 GB laptop
+    # under load those FFmpeg processes die ("write EOF"). Two workers is reliable and still fast.
+    args = ["render", str(project), "--workers", str(cfg.get("workers", 2)), "--quality", cfg.get("quality", "fast")]
+    if not cfg.get("watermark", False):
+        args.append("--no-watermark")
+    _cli(*args, cwd=ROOT)
+    rendered = max((project / "out").glob("*.mp4"), key=lambda p: p.stat().st_mtime)  # never build/ segments
 
     narration = run_dir / "explainroo_narration.wav"
     run([which("ffmpeg"), "-y", "-i", str(rendered), "-vn", "-ac", "1", "-ar", "48000", str(narration)])

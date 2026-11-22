@@ -37,4 +37,4 @@ def render(script: dict[str, Any], run_dir: Path, out_mp4: Path, aspect: str) ->
     silent = run_dir / "handanim_silent.mp4"
     scene.render(str(silent), max_length=timing["total_duration_sec"] + 0.5)
     audio = run_dir / "mixed_master.wav"
-    return mux_audio(silent, audio, out_mp4, media_duration(audio))
+    return mux_audio(silent, audio, out_mp4, media_duration(audio), captions=run_dir / "captions.json", aspect=aspect)
