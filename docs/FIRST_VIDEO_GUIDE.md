@@ -1,11 +1,13 @@
 # First video guide
 
-**Push this repo to GitHub** (no remote was configured and the GitHub CLI was not logged in during the build). Create an empty **private** repo named `video-factory` at https://github.com/new, then run:
+**Push this repo to GitHub.** The GitHub CLI is installed but not logged in (login needs your browser). In a **new** terminal, from this folder:
 
 ```powershell
-git remote add origin https://github.com/ElwinGonsalves/video-factory.git
-git push -u origin main
+gh auth login --web
+gh repo create video-factory --private --source . --remote origin --push
 ```
+
+Without the CLI: create an empty private repo named `video-factory` at https://github.com/new, then `git remote add origin https://github.com/ElwinGonsalves/video-factory.git` and `git push -u origin main`.
 
 ---
 
