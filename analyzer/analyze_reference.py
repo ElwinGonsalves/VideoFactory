@@ -33,7 +33,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from common import PROJECTS, ROOT, ffprobe_json, read_json, run, which, write_json  # noqa: E402
+from common import PROJECTS, ROOT, ffprobe_json, read_json, run, settings, which, write_json  # noqa: E402
 
 WORK = ROOT / "analyzer" / "work"
 BLUEPRINTS = ROOT / "analyzer" / "blueprints"
@@ -52,11 +52,18 @@ def download(src: str, media_dir: Path) -> Path:
         dest = media_dir / Path(src).name
         shutil.copy2(src, dest)
         return dest
+    out_tpl = str(media_dir / "%(id)s.%(ext)s")
     run(
         [which("yt-dlp"), "-q", "--no-warnings", "-f", "bv*[height<=720]+ba/b[height<=720]/b",
-         "--merge-output-format", "mp4", "--write-auto-sub", "--write-sub", "--sub-lang", "en.*",
-         "--convert-subs", "srt", "--socket-timeout", "30", "--retries", "3",
-         "-o", str(media_dir / "%(id)s.%(ext)s"), src]
+         "--merge-output-format", "mp4", "--socket-timeout", "30", "--retries", "3", "-o", out_tpl, src]
+    )  # fmt: skip
+    # Platform captions are only a cross-check (Whisper is the transcript of record), so they are
+    # best-effort and limited to original English: "en.*" also matched every auto-translation
+    # (en-de, en-fr, ...) and tripped YouTube's 429 rate limit.
+    run(
+        [which("yt-dlp"), "-q", "--no-warnings", "--skip-download", "--write-auto-sub", "--write-sub",
+         "--sub-langs", "en,en-orig", "--convert-subs", "srt", "-o", out_tpl, src],
+        check=False,
     )  # fmt: skip
     return max(media_dir.glob("*.mp4"), key=lambda p: p.stat().st_mtime)
 
@@ -233,94 +240,195 @@ def draft_blueprint(style: str, analyses: list[dict[str, Any]]) -> dict[str, Any
 IDEA_FIELDS = ["Title", "Hook", "Core Concept/Angle", "Case Study/Example", "Engine Selection", "Music Mood"]
 
 
-def ideas_sheet(style: str, blueprint_path: Path) -> str:
-    rows = "\n".join(f"| {i} | " + " | ".join("TODO" for _ in IDEA_FIELDS) + " |" for i in range(1, 6))
+class SheetGateExceeded(RuntimeError):
+    pass
+
+
+def ideas_sheet(style: str, blueprint_path: Path, ideas: list[dict[str, Any]] | None = None) -> str:
+    if ideas:
+        rows = "\n".join(
+            f"| {i['n']} | {i['title']} | {i['hook']} | {i['angle']} | {i['case_study']} | {i['style']} | {i['music_mood']} |"
+            for i in ideas
+        )
+    else:
+        rows = "\n".join(f"| {i} | " + " | ".join("TODO" for _ in IDEA_FIELDS) + " |" for i in range(1, 6))
     return (
         f"# Video ideas for blueprint `{style}`\n\n"
-        f"Blueprint: `{blueprint_path.relative_to(ROOT)}`\n\n"
-        "The agent fills in five ideas mapped to this blueprint, then STOPS.\n"
-        "Nothing is voiced, mixed or rendered until the user approves with:\n\n"
+        f"Blueprint: `{blueprint_path.relative_to(ROOT).as_posix()}`\n\n"
+        "Nothing is voiced, mixed or rendered until you approve ideas (Ideas tab, or):\n\n"
         "```\npython analyzer/analyze_reference.py approve --work <this folder> --ideas 1,3\n```\n\n"
         f"| # | {' | '.join(IDEA_FIELDS)} |\n|---|{'---|' * len(IDEA_FIELDS)}\n{rows}\n"
     )
 
 
-def cmd_analyze(args: argparse.Namespace) -> int:
-    style = slugify(args.style)
+def estimate_sheets(sources: list[str], mode: str) -> int:
+    total = 0
+    for src in sources:
+        if src.startswith(("http://", "https://")):
+            dur = float(run([which("yt-dlp"), "--no-warnings", "--print", "%(duration)s", src]).stdout.strip() or 0)
+        else:
+            dur = probe(Path(src))["duration"]
+        total += sheet_count(dur, mode)
+    return total
+
+
+def reference_notes(analyses: list[dict[str, Any]]) -> str:
+    """Compact text summary of the references for the idea prompt (hooks + pacing + transcript start)."""
+    notes = []
+    for a in analyses:
+        transcript = read_json(ROOT / Path(a["video"]).parent.parent / "transcript.json") if a.get("video") else []
+        text = " ".join(s["text"] for s in transcript)[:700]
+        notes.append(
+            f"- {a['source']} ({a['aspect_ratio']}, {a['duration']:.0f}s, {a['pacing']['scene_count']} shots, "
+            f"avg shot {a['pacing']['avg_shot_sec']}s, {a['words_per_minute']} wpm)\n"
+            f"  first 3s said: {a['hook_first_3s']['said']!r}\n  transcript: {text}"
+        )
+    return "\n".join(notes)
+
+
+def analyze_references(sources: list[str], style: str, mode: str = "condensed", yes: bool = False) -> Path:
+    """Download + analyze references, draft the blueprint. Returns the work folder."""
+    style = slugify(style)
+    if not yes:
+        total = estimate_sheets(sources, mode)
+        if total > SHEET_GATE:
+            raise SheetGateExceeded(
+                f"{total} contact sheets in {mode} mode exceeds the {SHEET_GATE}-sheet gate. "
+                "Use mode 'hook' or 'condensed', or confirm to proceed."
+            )
     run_dir = WORK / f"{date.today().isoformat()}-{style}"
     run_dir.mkdir(parents=True, exist_ok=True)
-
-    if not args.yes:
-        total = 0
-        for src in args.sources:
-            if src.startswith(("http://", "https://")):
-                dur = float(run([which("yt-dlp"), "--no-warnings", "--print", "%(duration)s", src]).stdout.strip() or 0)
-            else:
-                dur = probe(Path(src))["duration"]
-            total += sheet_count(dur, args.mode)
-        if total > SHEET_GATE:
-            print(f"{total} contact sheets in {args.mode} mode exceeds the {SHEET_GATE}-sheet gate.")
-            print("Re-run with --mode hook or --mode condensed, or pass --yes to proceed.")
-            return 2
-
     analyses = []
-    for i, src in enumerate(args.sources, 1):
-        sub = run_dir / f"ref{i}"
-        print(f"[{i}/{len(args.sources)}] analyzing {src}")
-        analyses.append(analyze_one(src, sub, args.mode))
+    for i, src in enumerate(sources, 1):
+        print(f"[{i}/{len(sources)}] analyzing {src}", flush=True)
+        analyses.append(analyze_one(src, run_dir / f"ref{i}", mode))
     write_json(run_dir / "analysis.json", analyses)
-
     bp = draft_blueprint(style, analyses)
     bp_path = BLUEPRINTS / f"{style}.json"
     write_json(bp_path, bp)
     (run_dir / "IDEAS.md").write_text(ideas_sheet(style, bp_path), encoding="utf-8")
     write_json(
         run_dir / "approval.json",
-        {"blueprint": str(bp_path.relative_to(ROOT).as_posix()), "status": "pending", "approved": []},
+        {"blueprint": bp_path.relative_to(ROOT).as_posix(), "status": "pending", "approved": []},
     )
-    print(f"analysis : {run_dir}")
-    print(f"blueprint: {bp_path}  (fill the TODO fields after reading the contact sheets)")
-    print(f"ideas    : {run_dir / 'IDEAS.md'}  -> present 5 ideas, then wait for approval")
+    print(f"analysis : {run_dir}", flush=True)
+    print(f"blueprint: {bp_path}", flush=True)
+    return run_dir
+
+
+def propose_ideas(run_dir: Path, topic_hint: str = "", niche: str = "") -> list[dict[str, Any]]:
+    """Ask the configured LLM for 5 ideas mapped to the blueprint. Writes ideas.json + IDEAS.md."""
+    from llm.tasks import generate_ideas, read_reference_frames
+
+    approval = read_json(run_dir / "approval.json")
+    bp_path = ROOT / approval["blueprint"]
+    bp = read_json(bp_path)
+    analyses = read_json(run_dir / "analysis.json")
+    if "TODO" in json.dumps(bp.get("hook_first_3s", {})):
+        # Vision step: let the model read the contact sheets (first-3s sheet first) and fill the TODOs.
+        sheets = sorted((ROOT / p for p in analyses[0]["contact_sheets"]), key=lambda p: (p.stem != "first-3s", p.name))
+        try:
+            bp = read_reference_frames(bp, sheets, analyses[0]["hook_first_3s"]["said"])
+            write_json(bp_path, bp)
+            print("blueprint: visual fields filled from contact sheets", flush=True)
+        except Exception as exc:  # noqa: BLE001 - ideas still work from transcript + pacing
+            print(f"blueprint: vision step skipped ({str(exc)[:120]})", flush=True)
+    ideas = generate_ideas(blueprint=bp, topic_hint=topic_hint, niche=niche, reference_notes=reference_notes(analyses))
+    write_json(run_dir / "ideas.json", ideas)
+    (run_dir / "IDEAS.md").write_text(ideas_sheet(bp["style_name"], bp_path, ideas), encoding="utf-8")
+    return ideas
+
+
+def approve_ideas(run_dir: Path, chosen: list[int], write_scripts: bool = True) -> list[str]:
+    """Record the user's approval; create projects/<blueprint>-idea<N>/script.json for each idea.
+
+    With an LLM configured, each script is fully written from the idea + blueprint; without one,
+    a scaffold is created for you (or Kiro) to fill in.
+    """
+    from pipeline.router import BLUEPRINT_ENGINE_TO_STYLE
+
+    approval = read_json(run_dir / "approval.json")
+    bp = read_json(ROOT / approval["blueprint"])
+    ideas = {i["n"]: i for i in (read_json(run_dir / "ideas.json") if (run_dir / "ideas.json").exists() else [])}
+    prefs = settings.load()["defaults"]
+    voice = {"engine": prefs["voice_engine"], "voice": prefs["voice"], "rate": prefs["rate"]}
+    created = []
+    for n in chosen:
+        idea = ideas.get(n, {})
+        style = idea.get("style") or BLUEPRINT_ENGINE_TO_STYLE.get(bp["recommended_engine"], "concept_explainer")
+        mood = idea.get("music_mood") or bp["audio_profile"]["music_mood"]
+        proj = PROJECTS / f"{bp['style_name']}-idea{n}"
+        proj.mkdir(parents=True, exist_ok=True)
+        script: dict[str, Any] | None = None
+        if write_scripts and idea:
+            from llm.tasks import write_script
+
+            brief = f"{idea['title']}. Hook: {idea['hook']}. Angle: {idea['angle']}. Case study: {idea['case_study']}."
+            try:
+                script = write_script(
+                    brief=brief,
+                    style=style,
+                    aspect=bp["aspect_ratio"],
+                    mood=mood,
+                    duration_sec=int(bp.get("target_duration_sec") or prefs["target_duration_sec"]),
+                    voice=voice,
+                    language=prefs["language"],
+                    blueprint=bp,
+                )
+            except Exception as exc:  # noqa: BLE001 - fall back to a scaffold, never lose the approval
+                print(f"idea {n}: script writing failed ({str(exc)[:160]}); created a scaffold instead", flush=True)
+        if script is None:
+            script = {
+                "title": idea.get("title") or f"TODO idea {n} title",
+                "description": idea.get("angle", ""),
+                "style": style,
+                "aspect_ratio": bp["aspect_ratio"],
+                "music_mood": mood,
+                "voice": voice,
+                "scenes": [
+                    {"narration": "TODO", "visual": {"type": "headline", "heading": "TODO"}}
+                    for _ in bp["beat_template"]
+                ],
+            }
+        script.update(
+            {
+                "caption_style": bp["pacing"]["caption_style"],
+                "blueprint": approval["blueprint"],
+                "approval": "approved",
+                "idea": idea,
+            }
+        )
+        write_json(proj / "script.json", script)
+        created.append(proj.relative_to(ROOT).as_posix())
+    approval.update({"status": "approved", "approved": chosen, "projects": created})
+    write_json(run_dir / "approval.json", approval)
+    return created
+
+
+def cmd_analyze(args: argparse.Namespace) -> int:
+    try:
+        run_dir = analyze_references(args.sources, args.style, args.mode, args.yes)
+    except SheetGateExceeded as exc:
+        print(exc)
+        return 2
+    if not args.no_ideas:
+        try:
+            ideas = propose_ideas(run_dir, args.topic or "", settings.load()["defaults"]["niche"])
+            for i in ideas:
+                print(f"  {i['n']}. {i['title']}  [{i['style']}, {i['music_mood']}]\n     hook: {i['hook']}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"ideas: LLM unavailable ({str(exc)[:160]}). Fill {run_dir / 'IDEAS.md'} by hand or ask Kiro.")
+    print(
+        f"ideas    : {run_dir / 'IDEAS.md'} -> approve with: analyze_reference.py approve --work {run_dir} --ideas 1,3"
+    )
     return 0
 
 
 def cmd_approve(args: argparse.Namespace) -> int:
-    work = Path(args.work)
-    approval = read_json(work / "approval.json")
-    bp = read_json(ROOT / approval["blueprint"])
-    chosen = [int(x) for x in args.ideas.split(",") if x.strip()]
-    from pipeline.router import BLUEPRINT_ENGINE_TO_STYLE
-
-    created = []
-    for n in chosen:
-        slug = f"{bp['style_name']}-idea{n}"
-        proj = PROJECTS / slug
-        proj.mkdir(parents=True, exist_ok=True)
-        script_path = proj / "script.json"
-        if not script_path.exists():
-            write_json(
-                script_path,
-                {
-                    "title": f"TODO idea {n} title",
-                    "description": "",
-                    "tags": [],
-                    "style": BLUEPRINT_ENGINE_TO_STYLE.get(bp["recommended_engine"], "concept_explainer"),
-                    "aspect_ratio": bp["aspect_ratio"],
-                    "music_mood": bp["audio_profile"]["music_mood"],
-                    "caption_style": bp["pacing"]["caption_style"],
-                    "blueprint": approval["blueprint"],
-                    "approval": "approved",
-                    "voice": {"engine": "edge-tts", "voice": "en-US-AndrewNeural", "rate": "+0%"},
-                    "scenes": [
-                        {"narration": "TODO", "visual": {"type": "headline", "heading": "TODO"}}
-                        for _ in bp["beat_template"]
-                    ],
-                },
-            )
-        created.append(str(proj.relative_to(ROOT).as_posix()))
-    approval.update({"status": "approved", "approved": chosen, "projects": created})
-    write_json(work / "approval.json", approval)
-    print(json.dumps(approval, indent=2))
+    created = approve_ideas(
+        Path(args.work), [int(x) for x in args.ideas.split(",") if x.strip()], not args.scaffold_only
+    )
+    print(json.dumps({"approved": args.ideas, "projects": created}, indent=2))
     return 0
 
 
@@ -332,10 +440,13 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--style", required=True, help="Blueprint name, e.g. vox_maps")
     a.add_argument("--mode", choices=list(MODES), default="condensed")
     a.add_argument("--yes", action="store_true", help="Skip the 15-sheet gate")
+    a.add_argument("--topic", help="Optional topic hint for the 5 ideas")
+    a.add_argument("--no-ideas", action="store_true", help="Only analyze; do not call the LLM for ideas")
     a.set_defaults(func=cmd_analyze)
     b = sub.add_parser("approve", help="Record which ideas the user approved")
     b.add_argument("--work", required=True)
     b.add_argument("--ideas", required=True, help="Comma list, e.g. 1,3")
+    b.add_argument("--scaffold-only", action="store_true", help="Create script scaffolds without the LLM")
     b.set_defaults(func=cmd_approve)
     args = p.parse_args(argv)
     return args.func(args)
