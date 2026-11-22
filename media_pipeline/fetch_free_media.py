@@ -36,7 +36,10 @@ from common import ROOT, read_json, safe_replace, sha256_text, write_json  # noq
 
 CACHE = ROOT / "media_pipeline" / "cache"
 TEXTURES = ROOT / "media_pipeline" / "textures_cache"
-HEADERS = {"User-Agent": "video-factory/1.0 (https://github.com/; local zero-API video tool)"}
+STUDIO_TEXTURES = ROOT / "studio" / "public" / "textures"
+HEADERS = {
+    "User-Agent": "video-factory/1.0 (https://github.com/ElwinGonsalves/video-factory; local zero-API video tool)"
+}
 TIMEOUT = 30
 Record = dict[str, Any]
 
@@ -228,12 +231,19 @@ def make_textures(size: int = 1080) -> list[Path]:
     grid = np.full((size, size, 3), 251, dtype=np.float64)
     grid[::60, :, :] = 225
     grid[:, ::60, :] = 225
+    STUDIO_TEXTURES.mkdir(parents=True, exist_ok=True)
     out = []
     for name, arr in (("paper_grain.png", paper), ("chalkboard.png", chalk), ("grid.png", grid)):
         path = TEXTURES / name
         Image.fromarray(arr.astype("uint8")).save(path)
+        shutil.copy2(path, STUDIO_TEXTURES / name)  # Remotion reads them via staticFile('textures/...')
         out.append(path)
     return out
+
+
+def ensure_textures() -> None:
+    if not (STUDIO_TEXTURES / "paper_grain.png").exists():
+        make_textures()
 
 
 def main(argv: list[str] | None = None) -> int:
