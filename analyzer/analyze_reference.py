@@ -34,6 +34,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from common import PROJECTS, ROOT, ffprobe_json, read_json, run, settings, which, write_json  # noqa: E402
+from common.slugs import title_slug  # noqa: E402
 
 WORK = ROOT / "analyzer" / "work"
 BLUEPRINTS = ROOT / "analyzer" / "blueprints"
@@ -357,8 +358,6 @@ def approve_ideas(run_dir: Path, chosen: list[int], write_scripts: bool = True) 
         idea = ideas.get(n, {})
         style = idea.get("style") or BLUEPRINT_ENGINE_TO_STYLE.get(bp["recommended_engine"], "concept_explainer")
         mood = idea.get("music_mood") or bp["audio_profile"]["music_mood"]
-        proj = PROJECTS / f"{bp['style_name']}-idea{n}"
-        proj.mkdir(parents=True, exist_ok=True)
         script: dict[str, Any] | None = None
         if write_scripts and idea:
             from llm.tasks import write_script
@@ -390,6 +389,8 @@ def approve_ideas(run_dir: Path, chosen: list[int], write_scripts: bool = True) 
                     for _ in bp["beat_template"]
                 ],
             }
+        proj = PROJECTS / title_slug(script.get("title") or idea.get("title") or "")
+        proj.mkdir(parents=True, exist_ok=True)
         script.update(
             {
                 "caption_style": bp["pacing"]["caption_style"],
@@ -428,7 +429,13 @@ def cmd_approve(args: argparse.Namespace) -> int:
     created = approve_ideas(
         Path(args.work), [int(x) for x in args.ideas.split(",") if x.strip()], not args.scaffold_only
     )
-    print(json.dumps({"approved": args.ideas, "projects": created}, indent=2))
+    print(json.dumps({"approved": args.ideas, "projects": created}, indent=2), flush=True)
+    if args.render:
+        from make_video import produce
+
+        for rel_path in created:
+            print(f"rendering {rel_path}", flush=True)
+            produce(ROOT / rel_path)
     return 0
 
 
@@ -447,6 +454,7 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--work", required=True)
     b.add_argument("--ideas", required=True, help="Comma list, e.g. 1,3")
     b.add_argument("--scaffold-only", action="store_true", help="Create script scaffolds without the LLM")
+    b.add_argument("--render", action="store_true", help="Render each approved project after writing it")
     b.set_defaults(func=cmd_approve)
     args = p.parse_args(argv)
     return args.func(args)

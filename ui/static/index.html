@@ -13,6 +13,7 @@
     <nav id="tabs">
       <button data-tab="create" class="active">Create</button>
       <button data-tab="ideas">Ideas</button>
+      <button data-tab="batch">Batch</button>
       <button data-tab="library">Library</button>
       <button data-tab="schedule">Schedule</button>
       <button data-tab="settings">Settings</button>
@@ -30,7 +31,7 @@
           <label>What should the video explain?</label>
           <textarea id="c-prompt" rows="3" placeholder="e.g. Why Costco sells hot dogs for $1.50 (and makes money)"></textarea>
           <div class="row">
-            <div><label>Slug (folder name)</label><input id="c-slug" placeholder="auto from prompt"></div>
+            <div><label>Slug (folder name)</label><input id="c-slug" placeholder="auto from the video title"></div>
             <div><label>Length (s)</label><input id="c-duration" type="number" min="15" max="180" value="50"></div>
           </div>
           <div class="row">
@@ -86,6 +87,11 @@
         </div>
       </div>
       <div id="runs"></div>
+    </section>
+
+    <!-- BATCH -->
+    <section id="tab-batch" class="tab">
+      <div class="card"><h2>Batch</h2><p class="muted">Upload a spreadsheet to queue many videos at once.</p></div>
     </section>
 
     <!-- LIBRARY -->

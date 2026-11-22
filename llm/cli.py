@@ -16,20 +16,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from common import OUTPUT, PROJECTS, read_json, settings, write_json  # noqa: E402
+from common.slugs import title_slug  # noqa: E402
 from llm.providers import GeminiProvider, get_provider  # noqa: E402
 from llm.tasks import write_metadata, write_script  # noqa: E402
 
 
-def slugify(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:50] or "video"
-
-
 def cmd_write_script(a: argparse.Namespace) -> int:
     prefs = settings.load()["defaults"]
-    slug = slugify(a.slug or a.prompt)
-    proj = PROJECTS / slug
-    if (proj / "script.json").exists() and not a.overwrite:
-        print(f"{proj / 'script.json'} exists; pass --overwrite to replace it", file=sys.stderr)
+    explicit = re.sub(r"[^a-z0-9_-]+", "-", a.slug.lower()).strip("-") if a.slug else ""
+    if explicit and (PROJECTS / explicit / "script.json").exists() and not a.overwrite:
+        print(f"{PROJECTS / explicit / 'script.json'} exists; pass --overwrite to replace it", file=sys.stderr)
         return 2
     print(f"writing script with {settings.load()['llm']['provider']} ...", flush=True)
     script = write_script(
@@ -42,6 +38,8 @@ def cmd_write_script(a: argparse.Namespace) -> int:
         language=prefs["language"],
     )
     script["platforms"] = a.platforms.split(",") if a.platforms else ["youtube"]
+    slug = explicit or title_slug(script["title"])  # the slug comes from the Title only, never the prompt
+    proj = PROJECTS / slug
     proj.mkdir(parents=True, exist_ok=True)
     write_json(proj / "script.json", script)
     print(f"SCRIPT {proj / 'script.json'} ({len(script['scenes'])} scenes)", flush=True)

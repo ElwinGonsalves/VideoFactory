@@ -28,6 +28,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import uvicorn  # noqa: E402
 import yaml  # noqa: E402
 from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile  # noqa: E402
+from fastapi.exceptions import RequestValidationError  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
 
 from common import OUTPUT, PROJECTS, ROOT, read_json, settings, write_json  # noqa: E402
@@ -59,21 +61,87 @@ jobs = JobManager()
 daemon: dict[str, subprocess.Popen[bytes] | None] = {"proc": None}
 
 
+# ------------------------------------------------------------------ structured errors + CORS
+HINTS = {
+    400: "Check the highlighted field and try again.",
+    401: "The session token is stale. Reload the page (the server restarted or the tab is old).",
+    404: "That item no longer exists. Refresh the list.",
+    409: "Another action is already using this. Wait for it to finish, then retry.",
+    413: "The file is too large.",
+    422: "Some input has the wrong shape. Check required fields.",
+    429: "Too many requests. Wait a moment and retry.",
+    503: "A local database is busy. Retry in a few seconds.",
+}
+
+
+def error_body(status: int, detail: Any, hint: str | None = None) -> dict[str, Any]:
+    """Every API failure has this shape; the page shows `detail` and, below it, `hint`."""
+    text = detail if isinstance(detail, str) else json.dumps(detail, default=str)[:400]
+    default = "See the log panel or the server console for the full traceback." if status >= 500 else ""
+    return {"detail": text, "hint": hint or HINTS.get(status, default)}
+
+
+@app.exception_handler(HTTPException)
+async def http_error(_request: Request, exc: HTTPException) -> JSONResponse:
+    return JSONResponse(error_body(exc.status_code, exc.detail), status_code=exc.status_code)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(_request: Request, exc: RequestValidationError) -> JSONResponse:
+    parts = []
+    for e in exc.errors()[:4]:
+        where = ".".join(str(p) for p in e["loc"][1:]) or "body"
+        parts.append(f"{where}: {e['msg']}")
+    fields = "; ".join(parts)
+    return JSONResponse(error_body(422, f"invalid request ({fields})"), status_code=422)
+
+
+@app.exception_handler(Exception)
+async def unhandled_error(request: Request, exc: Exception) -> JSONResponse:
+    import traceback
+
+    traceback.print_exception(exc)
+    return JSONResponse(
+        error_body(
+            500,
+            f"{type(exc).__name__}: {str(exc)[:300]}",
+            f"Unexpected server error on {request.url.path}. "
+            "The full traceback is in the console running ui/server.py.",
+        ),
+        status_code=500,
+    )
+
+
+LOCAL_ORIGIN = r"^http://(127\.0\.0\.1|localhost):\d+$"  # this machine only; the session token still gates every call
+
+
 @app.middleware("http")
 async def require_token(request: Request, call_next):  # type: ignore[no-untyped-def]
     path = request.url.path
     host = request.headers.get("host", "").split(":")[0]
     if not LAN["enabled"] and host not in ("127.0.0.1", "localhost"):
         # DNS-rebinding guard: a hostile domain resolving to 127.0.0.1 still sends its own Host header.
-        return JSONResponse({"detail": "bad host"}, status_code=400)
+        return JSONResponse(
+            error_body(400, "bad host", "Open the UI at http://127.0.0.1:<port>/ or http://localhost:<port>/."),
+            status_code=400,
+        )
     if path.startswith("/api/") or path.startswith("/files/"):
         supplied = request.headers.get("x-vf-token") or request.query_params.get("t")
         if not supplied or not secrets.compare_digest(supplied, TOKEN):
-            return JSONResponse({"detail": "missing or wrong session token; reload the page"}, status_code=401)
+            return JSONResponse(error_body(401, "missing or wrong session token"), status_code=401)
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
     return response
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=LOCAL_ORIGIN,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["X-VF-Token", "Content-Type", "Range"],
+    expose_headers=["Content-Range", "Accept-Ranges", "Content-Disposition"],
+)
 
 
 # ------------------------------------------------------------------ page + files
@@ -314,13 +382,9 @@ def approve(run: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
     if not chosen:
         raise HTTPException(400, "pick at least one idea")
     args = ["analyzer/analyze_reference.py", "approve", "--work", str(d), "--ideas", ",".join(map(str, chosen))]
-    job = jobs.submit("approve", f"approve ideas {chosen} ({run})", args)
     if body.get("render_after"):
-        bp = read_json(ROOT / read_json(d / "approval.json")["blueprint"])
-        for n in chosen:  # queued behind the approval on the same heavy worker, so scripts exist first
-            slug = f"{bp['style_name']}-idea{n}"
-            jobs.submit("render", f"render {slug}", ["make_video.py", f"projects/{slug}"], {"slug": slug})
-    return job.public()
+        args.append("--render")  # project slugs come from the written titles, so the job renders them itself
+    return jobs.submit("approve", f"approve ideas {chosen} ({run})", args).public()
 
 
 # ------------------------------------------------------------------ Library

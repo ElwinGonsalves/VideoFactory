@@ -7,20 +7,34 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&': '&amp;', '<
 const file = (rel) => `/files/${rel.split('/').map(encodeURIComponent).join('/')}?t=${encodeURIComponent(T)}&v=${Date.now() % 1e6}`;
 let OPTS = null;
 
+const API_TIMEOUT_MS = 30000;      // normal calls; jobs run in the background, so nothing legitimate is slower
+const UPLOAD_TIMEOUT_MS = 120000;  // file uploads (OAuth JSON, spreadsheets)
+class ApiError extends Error {
+  constructor(message, hint = '') { super(message); this.hint = hint; }
+}
+/** Turn any fetch failure into a sentence that says what to do. Never the browser's bare "Failed to fetch". */
+function explainFetchError(e, ms) {
+  if (e.name === 'AbortError') return new ApiError(`The server did not answer within ${Math.round(ms / 1000)} s.`, 'It may be busy rendering. Wait a moment and retry; check the log panel.');
+  return new ApiError('Server not reachable.', 'Is `python ui/server.py` running? Start it again, then reload this page.');
+}
 async function api(path, opts = {}) {
   const init = {method: opts.method || 'GET', headers: {'X-VF-Token': T}};
   if (opts.body instanceof FormData) init.body = opts.body;
   else if (opts.body !== undefined) { init.headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(opts.body); }
-  const res = await fetch(path, init);
+  const ms = opts.timeout ?? (opts.body instanceof FormData ? UPLOAD_TIMEOUT_MS : API_TIMEOUT_MS);
+  const ctl = new AbortController(); init.signal = ctl.signal;
+  const timer = setTimeout(() => ctl.abort(), ms);
+  let res;
+  try { res = await fetch(path, init); } catch (e) { throw explainFetchError(e, ms); } finally { clearTimeout(timer); }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  if (!res.ok) throw new ApiError(data.detail || `Request failed (HTTP ${res.status}).`, data.hint || '');
   return data;
 }
-function toast(msg, err = false) {
-  const t = $('#toast'); t.textContent = msg; t.className = 'show' + (err ? ' err' : '');
-  clearTimeout(toast.h); toast.h = setTimeout(() => (t.className = ''), 4500);
+function toast(msg, err = false, hint = '') {
+  const t = $('#toast'); t.textContent = hint ? `${msg} ${hint}` : msg; t.className = 'show' + (err ? ' err' : '');
+  clearTimeout(toast.h); toast.h = setTimeout(() => (t.className = ''), err ? 9000 : 4500);
 }
-async function act(fn) { try { return await fn(); } catch (e) { toast(e.message, true); } }
+async function act(fn) { try { return await fn(); } catch (e) { toast(e.message || String(e), true, e.hint || ''); } }
 function opts(sel, values, current) { sel.innerHTML = values.map((v) => `<option ${v === current ? 'selected' : ''}>${esc(v)}</option>`).join(''); }
 function checks(el, values, checked = []) {
   el.innerHTML = values.map((v) => `<label class="inline"><input type="checkbox" value="${esc(v)}" ${checked.includes(v) ? 'checked' : ''}> ${esc(v)}</label>`).join('');
