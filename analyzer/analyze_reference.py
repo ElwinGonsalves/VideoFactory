@@ -255,7 +255,7 @@ def ideas_sheet(style: str, blueprint_path: Path, ideas: list[dict[str, Any]] | 
         rows = "\n".join(f"| {i} | " + " | ".join("TODO" for _ in IDEA_FIELDS) + " |" for i in range(1, 6))
     return (
         f"# Video ideas for blueprint `{style}`\n\n"
-        f"Blueprint: `{blueprint_path.relative_to(ROOT).as_posix()}`\n\n"
+        f"Blueprint: `{_rel(blueprint_path)}`\n\n"
         "Nothing is voiced, mixed or rendered until you approve ideas (Ideas tab, or):\n\n"
         "```\npython analyzer/analyze_reference.py approve --work <this folder> --ideas 1,3\n```\n\n"
         f"| # | {' | '.join(IDEA_FIELDS)} |\n|---|{'---|' * len(IDEA_FIELDS)}\n{rows}\n"
@@ -317,15 +317,73 @@ def analyze_references(sources: list[str], style: str, mode: str = "condensed", 
     return run_dir
 
 
+def _rel(p: Path) -> str:
+    try:
+        return p.relative_to(ROOT).as_posix()
+    except ValueError:
+        return str(p)
+
+
+def _blueprint_of(approval: dict[str, Any]) -> tuple[Path | None, dict[str, Any]]:
+    """Blueprint path + content, or (None, {}) for a topic brainstorm that has none."""
+    if not approval.get("blueprint"):
+        return None, {}
+    path = ROOT / approval["blueprint"]
+    return path, read_json(path)
+
+
+def list_blueprints() -> list[dict[str, Any]]:
+    out = []
+    for p in sorted(BLUEPRINTS.glob("*.json")):
+        try:
+            bp = read_json(p)
+        except ValueError:
+            continue
+        out.append(
+            {
+                "name": p.stem,
+                "path": p.relative_to(ROOT).as_posix(),
+                "aspect_ratio": bp.get("aspect_ratio"),
+                "target_duration_sec": bp.get("target_duration_sec"),
+                "created": bp.get("created", ""),
+            }
+        )
+    return out
+
+
+def start_brainstorm(topic: str, niche: str = "", blueprint: str = "") -> Path:
+    """New idea run from a topic/niche (optionally in the style of a saved blueprint). No video analysis."""
+    from datetime import datetime
+
+    bp_rel = ""
+    if blueprint:
+        bp_file = BLUEPRINTS / f"{slugify(blueprint)}.json"
+        if not bp_file.exists():
+            raise FileNotFoundError(f"no saved blueprint named {blueprint}")
+        bp_rel = bp_file.relative_to(ROOT).as_posix()
+    run_dir = WORK / f"{date.today().isoformat()}-brainstorm-{datetime.now().strftime('%H%M%S')}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    write_json(run_dir / "analysis.json", [])
+    write_json(
+        run_dir / "approval.json",
+        {"blueprint": bp_rel, "status": "pending", "approved": [], "mode": "brainstorm", "topic": topic},
+    )
+    propose_ideas(run_dir, topic, niche)
+    return run_dir
+
+
 def propose_ideas(run_dir: Path, topic_hint: str = "", niche: str = "") -> list[dict[str, Any]]:
-    """Ask the configured LLM for 5 ideas mapped to the blueprint. Writes ideas.json + IDEAS.md."""
+    """Ask the configured LLM for 5 pitch cards. Never repeats topics already in data/projects.db.
+
+    Writes ideas.json + IDEAS.md. Runs from reference videos also get the vision step on the contact sheets.
+    """
+    from common import db
     from llm.tasks import generate_ideas, read_reference_frames
 
     approval = read_json(run_dir / "approval.json")
-    bp_path = ROOT / approval["blueprint"]
-    bp = read_json(bp_path)
+    bp_path, bp = _blueprint_of(approval)
     analyses = read_json(run_dir / "analysis.json")
-    if "TODO" in json.dumps(bp.get("hook_first_3s", {})):
+    if bp_path and analyses and "TODO" in json.dumps(bp.get("hook_first_3s", {})):
         # Vision step: let the model read the contact sheets (first-3s sheet first) and fill the TODOs.
         sheets = sorted((ROOT / p for p in analyses[0]["contact_sheets"]), key=lambda p: (p.stem != "first-3s", p.name))
         try:
@@ -334,30 +392,60 @@ def propose_ideas(run_dir: Path, topic_hint: str = "", niche: str = "") -> list[
             print("blueprint: visual fields filled from contact sheets", flush=True)
         except Exception as exc:  # noqa: BLE001 - ideas still work from transcript + pacing
             print(f"blueprint: vision step skipped ({str(exc)[:120]})", flush=True)
-    ideas = generate_ideas(blueprint=bp, topic_hint=topic_hint, niche=niche, reference_notes=reference_notes(analyses))
+    ideas = generate_ideas(
+        blueprint=bp or None,
+        topic_hint=topic_hint or approval.get("topic", ""),
+        niche=niche,
+        reference_notes=reference_notes(analyses) if analyses else "",
+        history=db.known_topics(),
+        top_performers=db.top_performers(3),
+    )
     write_json(run_dir / "ideas.json", ideas)
-    (run_dir / "IDEAS.md").write_text(ideas_sheet(bp["style_name"], bp_path, ideas), encoding="utf-8")
+    (run_dir / "IDEAS.md").write_text(
+        ideas_sheet(bp.get("style_name", "brainstorm"), bp_path or run_dir, ideas), encoding="utf-8"
+    )
     return ideas
 
 
-def approve_ideas(run_dir: Path, chosen: list[int], write_scripts: bool = True) -> list[str]:
-    """Record the user's approval; create projects/<blueprint>-idea<N>/script.json for each idea.
+def edit_idea(run_dir: Path, n: int, fields: dict[str, Any]) -> dict[str, Any]:
+    """Save edits (title, hook, case_study, ...) or a dismissal made on a pitch card."""
+    ideas = read_json(run_dir / "ideas.json")
+    for idea in ideas:
+        if idea["n"] == n:
+            for k in ("title", "hook", "hook_visual", "angle", "case_study", "why_it_works"):
+                if k in fields:
+                    idea[k] = str(fields[k]).strip()[:300]
+            if "dismissed" in fields:
+                idea["dismissed"] = bool(fields["dismissed"])
+            write_json(run_dir / "ideas.json", ideas)
+            return idea
+    raise KeyError(n)
 
-    With an LLM configured, each script is fully written from the idea + blueprint; without one,
-    a scaffold is created for you (or Kiro) to fill in.
+
+def approve_ideas(run_dir: Path, chosen: list[int], write_scripts: bool = True) -> list[str]:
+    """Record the user's approval; create projects/<title-slug>/script.json for each idea.
+
+    With an LLM configured, each script is fully written from the idea (+ blueprint when there is one);
+    without one, a scaffold is created. Every approved idea is registered in data/projects.db so it is
+    never proposed again.
     """
+    from common import db
     from pipeline.router import BLUEPRINT_ENGINE_TO_STYLE
 
     approval = read_json(run_dir / "approval.json")
-    bp = read_json(ROOT / approval["blueprint"])
+    _bp_path, bp = _blueprint_of(approval)
     ideas = {i["n"]: i for i in (read_json(run_dir / "ideas.json") if (run_dir / "ideas.json").exists() else [])}
     prefs = settings.load()["defaults"]
     voice = {"engine": prefs["voice_engine"], "voice": prefs["voice"], "rate": prefs["rate"]}
     created = []
     for n in chosen:
         idea = ideas.get(n, {})
-        style = idea.get("style") or BLUEPRINT_ENGINE_TO_STYLE.get(bp["recommended_engine"], "concept_explainer")
-        mood = idea.get("music_mood") or bp["audio_profile"]["music_mood"]
+        style = idea.get("style") or BLUEPRINT_ENGINE_TO_STYLE.get(
+            bp.get("recommended_engine", ""), "concept_explainer"
+        )
+        mood = idea.get("music_mood") or bp.get("audio_profile", {}).get("music_mood", "documentary")
+        aspect = idea.get("aspect_ratio") or bp.get("aspect_ratio", prefs["aspect_ratio"])
+        duration = int(idea.get("duration_sec") or bp.get("target_duration_sec") or prefs["target_duration_sec"])
         script: dict[str, Any] | None = None
         if write_scripts and idea:
             from llm.tasks import write_script
@@ -367,13 +455,15 @@ def approve_ideas(run_dir: Path, chosen: list[int], write_scripts: bool = True) 
                 script = write_script(
                     brief=brief,
                     style=style,
-                    aspect=bp["aspect_ratio"],
+                    aspect=aspect,
                     mood=mood,
-                    duration_sec=int(bp.get("target_duration_sec") or prefs["target_duration_sec"]),
+                    duration_sec=duration,
                     voice=voice,
                     language=prefs["language"],
-                    blueprint=bp,
+                    blueprint=bp or None,
+                    grounding=settings.load()["llm"].get("grounding", True),
                 )
+                script["title"] = idea.get("title") or script["title"]  # the approved (possibly edited) title wins
             except Exception as exc:  # noqa: BLE001 - fall back to a scaffold, never lose the approval
                 print(f"idea {n}: script writing failed ({str(exc)[:160]}); created a scaffold instead", flush=True)
         if script is None:
@@ -381,27 +471,47 @@ def approve_ideas(run_dir: Path, chosen: list[int], write_scripts: bool = True) 
                 "title": idea.get("title") or f"TODO idea {n} title",
                 "description": idea.get("angle", ""),
                 "style": style,
-                "aspect_ratio": bp["aspect_ratio"],
+                "aspect_ratio": aspect,
                 "music_mood": mood,
                 "voice": voice,
                 "scenes": [
                     {"narration": "TODO", "visual": {"type": "headline", "heading": "TODO"}}
-                    for _ in bp["beat_template"]
+                    for _ in bp.get("beat_template", [{}, {}, {}, {}])
                 ],
             }
-        proj = PROJECTS / title_slug(script.get("title") or idea.get("title") or "")
+        slug = title_slug(script.get("title") or idea.get("title") or "")
+        proj = PROJECTS / slug
         proj.mkdir(parents=True, exist_ok=True)
         script.update(
             {
-                "caption_style": bp["pacing"]["caption_style"],
-                "blueprint": approval["blueprint"],
+                "caption_style": bp.get("pacing", {}).get("caption_style", "word_highlight"),
                 "approval": "approved",
                 "idea": idea,
             }
         )
+        if approval.get("blueprint"):
+            script["blueprint"] = approval["blueprint"]
         write_json(proj / "script.json", script)
-        created.append(proj.relative_to(ROOT).as_posix())
-    approval.update({"status": "approved", "approved": chosen, "projects": created})
+        db.upsert_project(
+            slug,
+            script["title"],
+            topic=idea.get("angle", ""),
+            case_study=idea.get("case_study", ""),
+            hook=idea.get("hook", ""),
+            style=style,
+            aspect_ratio=aspect,
+            duration_sec=duration,
+            source="ideas",
+            status="approved",
+        )
+        created.append(_rel(proj))
+    approval.update(
+        {
+            "status": "approved",
+            "approved": sorted({*approval.get("approved", []), *chosen}),
+            "projects": [*approval.get("projects", []), *created],
+        }
+    )
     write_json(run_dir / "approval.json", approval)
     return created
 
@@ -422,6 +532,14 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     print(
         f"ideas    : {run_dir / 'IDEAS.md'} -> approve with: analyze_reference.py approve --work {run_dir} --ideas 1,3"
     )
+    return 0
+
+
+def cmd_brainstorm(args: argparse.Namespace) -> int:
+    run_dir = start_brainstorm(args.topic, settings.load()["defaults"]["niche"], args.blueprint or "")
+    for i in read_json(run_dir / "ideas.json"):
+        print(f"  {i['n']}. {i['title']}  [{i['style']}, {i['music_mood']}]\n     hook: {i['hook']}", flush=True)
+    print(f"ideas    : {run_dir}", flush=True)
     return 0
 
 
@@ -450,6 +568,10 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--topic", help="Optional topic hint for the 5 ideas")
     a.add_argument("--no-ideas", action="store_true", help="Only analyze; do not call the LLM for ideas")
     a.set_defaults(func=cmd_analyze)
+    br = sub.add_parser("brainstorm", help="5 ideas from a topic/niche, no reference video")
+    br.add_argument("--topic", required=True)
+    br.add_argument("--blueprint", help="name of a saved Style Blueprint to imitate")
+    br.set_defaults(func=cmd_brainstorm)
     b = sub.add_parser("approve", help="Record which ideas the user approved")
     b.add_argument("--work", required=True)
     b.add_argument("--ideas", required=True, help="Comma list, e.g. 1,3")

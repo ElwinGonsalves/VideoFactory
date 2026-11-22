@@ -1,4 +1,4 @@
-﻿"""Pixel QA, post caps, settings, SFX cues, cover text, clipper crop, UI security. No rendering."""
+"""Pixel QA, post caps, settings, SFX cues, cover text, clipper crop, UI security. No rendering."""
 
 from __future__ import annotations
 

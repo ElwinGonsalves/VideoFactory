@@ -204,52 +204,86 @@ $('#e-render').onclick = () => act(async () => {
   watch(job, `Rendering ${current.slug}`, (s) => { toast(s === 'done' ? 'Render finished: see Library' : 'Render failed: see log', s !== 'done'); if (s === 'done') showTab('library'); });
 });
 // ---------------------------------------------------------------- IDEAS
+$$('#i-mode-tabs button').forEach((b) => (b.onclick = () => {
+  $$('#i-mode-tabs button').forEach((x) => x.classList.toggle('active', x === b));
+  $('#i-brainstorm').hidden = b.dataset.imode !== 'brainstorm'; $('#i-reference').hidden = b.dataset.imode !== 'reference';
+}));
+const ideaCard = (r, i) => `
+  <div class="idea ${i.dismissed ? 'dismissed' : ''}" data-run="${esc(r.run)}" data-n="${i.n}">
+    <label>Title</label><input data-f="title" value="${esc(i.title)}">
+    <label>Opening hook</label>
+    <div class="s"><b>Says:</b> <input data-f="hook" value="${esc(i.hook)}"></div>
+    <div class="s"><b>Shows:</b> <input data-f="hook_visual" value="${esc(i.hook_visual || '')}" placeholder="what the first 3 seconds show"></div>
+    <label>Core concept &amp; case study</label>
+    <textarea data-f="angle" rows="2">${esc(i.angle)}</textarea>
+    <textarea data-f="case_study" rows="2">${esc(i.case_study)}</textarea>
+    <div class="s"><span class="badge">${esc(i.style)}</span> <span class="badge">${esc(i.aspect_ratio || '9:16')}</span>
+      <span class="badge">${esc(i.duration_sec || 50)} s</span> <span class="badge">${esc(i.music_mood)}</span></div>
+    <div class="s muted">Why it works: ${esc(i.why_it_works)}</div>
+    <div class="actions">
+      <button class="primary small" data-act="approve">Approve &amp; Generate</button>
+      <button class="small" data-act="edit">Edit Script</button>
+      <button class="small" data-act="schedule">Add to Schedule</button>
+      <button class="small" data-act="dismiss">${i.dismissed ? 'Restore' : 'Dismiss'}</button>
+    </div></div>`;
 loaders.ideas = async () => {
-  const runs = await api('/api/ideas');
+  const [runs, bps, an] = await Promise.all([api('/api/ideas'), api('/api/blueprints'), api('/api/analytics')]);
+  opts($('#i-bp'), ['(none)', ...bps.map((b) => b.name)], '(none)');
+  $('#i-blueprints').innerHTML = bps.length ? bps.map((b) => `<span class="badge">${esc(b.name)} · ${esc(b.aspect_ratio)} · ${esc(b.target_duration_sec)} s</span>`).join(' ') : 'none yet: analyze a reference video to save one.';
+  $('#i-top').innerHTML = an.top.length ? `<b>Top by views:</b> ${an.top.map((t) => `${esc(t.title)} (${t.views})`).join(' · ')}` : 'No analytics yet. Paste published URLs in the Library, then Sync Analytics.';
   $('#runs').innerHTML = runs.map((r) => {
     const bp = r.blueprint || {}; const h = bp.hook_first_3s || {}; const p = bp.pacing || {};
-    const ideas = (r.ideas || []).map((i) => `
-      <div class="idea" data-run="${esc(r.run)}" data-n="${i.n}">
-        <label class="inline"><input type="checkbox" value="${i.n}" ${r.approved.includes(i.n) ? 'checked disabled' : ''}> <b>${i.n}. ${esc(i.title)}</b></label>
-        <div class="hook">“${esc(i.hook)}”</div><div>${esc(i.angle)}</div>
-        <div class="s muted">Case study: ${esc(i.case_study)}</div>
-        <div class="s"><span class="badge">${esc(i.style)}</span> <span class="badge">${esc(i.music_mood)}</span></div>
-        <div class="s muted">${esc(i.why_it_works)}</div></div>`).join('');
-    return `<div class="card">
-      <div class="row between"><h2>${esc(bp.style_name || r.run)}</h2><span class="badge ${r.status === 'approved' ? 'ok' : 'warn'}">${esc(r.status)}</span></div>
-      <div class="s muted">${r.sources.map(esc).join(' · ')}</div>
+    const cards = (r.ideas || []).map((i) => ideaCard(r, i)).join('');
+    const title = r.mode === 'brainstorm' ? `Brainstorm: ${r.topic}` : (bp.style_name || r.run);
+    return `<div class="card" data-runcard="${esc(r.run)}">
+      <div class="row between"><h2>${esc(title)}</h2><span class="badge ${r.status === 'approved' ? 'ok' : 'warn'}">${esc(r.status)}</span></div>
+      ${r.mode === 'brainstorm' ? '' : `<div class="s muted">${r.sources.map(esc).join(' · ')}</div>
       <div class="sheets">${r.sheets.map((s) => `<img src="${file(s)}" data-zoom>`).join('')}</div>
       <div class="s"><b>Says:</b> ${esc(h.verbal_pattern)}<br><b>Shows:</b> ${esc(h.visual_pattern)}<br>
-        <b>Pacing:</b> ${esc(p.avg_shot_sec)} s/shot · ${esc(p.words_per_minute)} wpm · captions ${esc(p.caption_style)} · ${esc(p.transition_style)}
-        · ${esc(bp.aspect_ratio)} · ~${esc(bp.target_duration_sec)} s</div>
-      ${ideas ? `<div class="ideas">${ideas}</div>` : '<p class="muted">No ideas yet.</p>'}
-      <div class="actions">
-        <button data-propose="${esc(r.run)}">${ideas ? 'Regenerate ideas' : 'Generate 5 ideas'}</button>
-        ${ideas ? `<button class="primary" data-approve="${esc(r.run)}">Approve selected</button>
-        <label class="inline"><input type="checkbox" id="ra-${esc(r.run)}" checked> render after approval</label>` : ''}
-      </div>
+        <b>Pacing:</b> ${esc(p.avg_shot_sec)} s/shot · ${esc(p.words_per_minute)} wpm · captions ${esc(p.caption_style)} · ${esc(p.transition_style)}</div>`}
+      <div class="ideas">${cards || '<p class="muted">No ideas yet.</p>'}</div>
+      <div class="actions"><button data-propose="${esc(r.run)}">${cards ? 'Regenerate ideas' : 'Generate 5 ideas'}</button></div>
       ${r.projects.length ? `<div class="s muted">Projects: ${r.projects.map(esc).join(', ')}</div>` : ''}
     </div>`;
-  }).join('') || '<div class="card muted">No analyses yet. Paste reference links above.</div>';
+  }).join('') || '<div class="card muted">No idea runs yet. Brainstorm a topic or analyze reference links above.</div>';
   $$('[data-zoom]').forEach((i) => (i.onclick = () => zoom(i.src)));
   $$('[data-propose]').forEach((b) => (b.onclick = () => act(async () => {
-    const job = await api(`/api/ideas/${encodeURIComponent(b.dataset.propose)}/propose`, {method: 'POST', body: {topic: $('#i-topic').value}});
+    const job = await api(`/api/ideas/${encodeURIComponent(b.dataset.propose)}/propose`, {method: 'POST', body: {topic: $('#i-topic').value || $('#i-btopic').value}});
     watch(job, 'Generating ideas', () => loaders.ideas());
   })));
-  $$('[data-approve]').forEach((b) => (b.onclick = () => act(async () => {
-    const run = b.dataset.approve; const card = b.closest('.card');
-    const ideas = $$('.idea input:checked:not(:disabled)', card).map((i) => +i.value);
-    if (!ideas.length) throw new Error('Tick at least one idea');
-    const job = await api(`/api/ideas/${encodeURIComponent(run)}/approve`, {method: 'POST', body: {ideas, render_after: $(`#ra-${CSS.escape(run)}`).checked}});
-    watch(job, `Approving ideas ${ideas.join(', ')}`, () => { loaders.ideas(); loaders.create(); });
-  })));
+  $$('.idea').forEach((card) => {
+    const run = card.dataset.run, n = +card.dataset.n;
+    const saveEdits = async (extra = {}) => {
+      const body = {...extra}; $$('[data-f]', card).forEach((el) => (body[el.dataset.f] = el.value));
+      await api(`/api/ideas/${encodeURIComponent(run)}/${n}`, {method: 'PUT', body});
+    };
+    $$('[data-act]', card).forEach((btn) => (btn.onclick = () => act(async () => {
+      const what = btn.dataset.act;
+      if (what === 'dismiss') { await saveEdits({dismissed: !card.classList.contains('dismissed')}); return loaders.ideas(); }
+      await saveEdits();
+      const job = await api(`/api/ideas/${encodeURIComponent(run)}/approve`, {method: 'POST', body: {ideas: [n], render_after: what === 'approve'}});
+      watch(job, what === 'approve' ? 'Approving and generating' : 'Writing script', async () => {
+        await loaders.ideas(); await loaders.create();
+        const projects = (await api(`/api/ideas`)).find((x) => x.run === run)?.projects || [];
+        const slug = (projects[projects.length - 1] || '').split('/').pop();
+        if (what === 'edit' && slug) { showTab('create'); openProject(slug); }
+        if (what === 'schedule' && slug) { showTab('schedule'); }
+      });
+    })));
+  });
 };
+$('#i-brainstorm-go').onclick = () => act(async () => {
+  const topic = $('#i-btopic').value.trim(); if (!topic) throw new Error('Type a topic or niche first');
+  const bp = $('#i-bp').value; const job = await api('/api/ideas/brainstorm', {method: 'POST', body: {topic, blueprint: bp === '(none)' ? '' : bp}});
+  watch(job, 'Brainstorming ideas', () => loaders.ideas());
+});
 $('#i-analyze').onclick = () => act(async () => {
   const urls = $('#i-urls').value.split(/\s+/).filter(Boolean); if (!urls.length) throw new Error('Paste at least one link');
-  const body = {urls, style: $('#i-style').value.trim() || 'my_style', mode: $('#i-mode').value, topic: $('#i-topic').value, confirm_large: $('#i-large').checked};
+  const body = {urls, style: $('#i-style').value.trim() || 'my_style', depth: $('#i-depth').value, topic: $('#i-topic').value, confirm_large: $('#i-large').checked};
   const job = await api('/api/analyze', {method: 'POST', body});
   watch(job, 'Analyzing references', () => loaders.ideas());
 });
+$('#i-sync').onclick = () => act(async () => watch(await api('/api/analytics/sync', {method: 'POST'}), 'Syncing analytics', () => loaders.ideas()));
 
 // ---------------------------------------------------------------- LIBRARY
 loaders.library = async () => {

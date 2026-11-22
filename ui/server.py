@@ -343,6 +343,8 @@ def analyze(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
         if not (u.startswith(("https://", "http://")) or Path(u).exists()):
             raise HTTPException(400, f"not a URL or existing file: {u}")
     style = str(body.get("style") or "my_style")
+    if body.get("depth") in ("fast", "detailed"):  # plain labels in the UI; the analyzer's own mode names stay internal
+        body["mode"] = {"fast": "hook", "detailed": "condensed"}[body["depth"]]
     args = [
         "analyzer/analyze_reference.py",
         "analyze",
@@ -360,6 +362,34 @@ def analyze(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
     return job.public()
 
 
+@app.get("/api/blueprints")
+def blueprints() -> list[dict[str, Any]]:
+    from analyzer.analyze_reference import list_blueprints
+
+    return list_blueprints()
+
+
+@app.post("/api/ideas/brainstorm")
+def brainstorm(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    topic = str(body.get("topic", "")).strip()
+    if not topic:
+        raise HTTPException(400, "type a topic or niche to brainstorm from")
+    args = ["analyzer/analyze_reference.py", "brainstorm", "--topic", topic]
+    if body.get("blueprint"):
+        args += ["--blueprint", str(body["blueprint"])]
+    return jobs.submit("llm", f"brainstorm: {topic[:50]}", args).public()
+
+
+@app.put("/api/ideas/{run}/{n}")
+def edit_idea_card(run: str, n: int, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    from analyzer.analyze_reference import edit_idea
+
+    try:
+        return edit_idea(_run_dir(run), n, body)
+    except KeyError as exc:
+        raise HTTPException(404, "no such idea") from exc
+
+
 @app.get("/api/ideas")
 def ideas_runs() -> list[dict[str, Any]]:
     out = []
@@ -367,7 +397,7 @@ def ideas_runs() -> list[dict[str, Any]]:
     for run in sorted(work.glob("*/approval.json"), key=lambda p: p.stat().st_mtime, reverse=True):
         d = run.parent
         approval = read_json(run)
-        bp_path = ROOT / approval["blueprint"]
+        bp_path = ROOT / approval["blueprint"] if approval.get("blueprint") else None
         analyses = read_json(d / "analysis.json") if (d / "analysis.json").exists() else []
         sheets = [s for a in analyses for s in a.get("contact_sheets", [])]
         out.append(
@@ -376,7 +406,9 @@ def ideas_runs() -> list[dict[str, Any]]:
                 "status": approval.get("status"),
                 "approved": approval.get("approved", []),
                 "projects": approval.get("projects", []),
-                "blueprint": read_json(bp_path) if bp_path.exists() else {},
+                "blueprint": read_json(bp_path) if bp_path and bp_path.exists() else {},
+                "mode": approval.get("mode", "reference"),
+                "topic": approval.get("topic", ""),
                 "ideas": read_json(d / "ideas.json") if (d / "ideas.json").exists() else [],
                 "sheets": sheets[:8],
                 "sources": [a.get("source") for a in analyses],
@@ -416,6 +448,33 @@ def approve(run: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
 
 
 # ------------------------------------------------------------------ Library
+# ------------------------------------------------------------------ analytics
+@app.get("/api/analytics")
+def analytics() -> dict[str, Any]:
+    from common import db
+
+    with db.connect() as conn:
+        stats = {r["project_id"]: dict(r) for r in conn.execute("SELECT * FROM analytics")}
+        urls = {r["project_id"]: r["url"] for r in conn.execute("SELECT project_id, url FROM published")}
+    return {"stats": stats, "urls": urls, "top": db.top_performers(3)}
+
+
+@app.put("/api/projects/{slug}/published")
+def set_published_url(slug: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    from common import db
+
+    url = str(body.get("url", "")).strip()
+    if not url.startswith(("https://", "http://")):
+        raise HTTPException(400, "paste the full https:// link of the published video")
+    db.set_published(_slug_ok(slug), str(body.get("platform", "youtube")), url)
+    return {"ok": True}
+
+
+@app.post("/api/analytics/sync")
+def sync_analytics() -> dict[str, Any]:
+    return jobs.submit("llm", "sync analytics (yt-dlp)", ["analyzer/sync_analytics.py"]).public()
+
+
 @app.get("/api/library")
 def library() -> list[dict[str, Any]]:
     out = []

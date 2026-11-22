@@ -87,18 +87,37 @@
     <!-- IDEAS -->
     <section id="tab-ideas" class="tab">
       <div class="card">
-        <h2>Learn from reference videos</h2>
-        <p class="muted">Paste YouTube / Shorts / Reels / TikTok links (one per line). The analyzer measures pacing, hook (said vs shown) and style into a blueprint, then proposes 5 ideas. Nothing is generated until you approve.</p>
-        <textarea id="i-urls" rows="3" placeholder="https://www.youtube.com/shorts/..."></textarea>
-        <div class="row">
-          <div><label>Style name</label><input id="i-style" placeholder="my_style"></div>
-          <div><label>Mode</label><select id="i-mode"><option value="hook">hook (first 20 s)</option><option value="condensed" selected>condensed</option><option value="forensic">forensic</option></select></div>
-          <div><label>Topic hint (optional)</label><input id="i-topic" placeholder="e.g. personal finance"></div>
+        <div class="segmented" id="i-mode-tabs">
+          <button data-imode="brainstorm" class="active">Brainstorm from Topic / Niche</button>
+          <button data-imode="reference">Learn from Reference Video(s)</button>
         </div>
-        <div class="actions">
-          <button id="i-analyze" class="primary">Analyze + propose ideas</button>
-          <label class="inline"><input type="checkbox" id="i-large"> allow long videos (&gt;15 contact sheets)</label>
+        <div id="i-brainstorm">
+          <p class="muted">Five pitch cards for a topic. Topics and case studies already in your Library are never proposed again.</p>
+          <label>Topic or niche</label>
+          <input id="i-btopic" placeholder="e.g. how famous companies survived near-bankruptcy">
+          <div class="row">
+            <div><label>Copy the style of a saved blueprint (optional)</label><select id="i-bp"></select></div>
+          </div>
+          <div class="actions"><button id="i-brainstorm-go" class="primary">Brainstorm 5 ideas</button></div>
         </div>
+        <div id="i-reference" hidden>
+          <p class="muted">Paste YouTube / Shorts / Reels / TikTok links (one per line). The analyzer measures pacing, hook (said vs shown) and style into a Style Blueprint, then proposes 5 ideas. Nothing is generated until you approve.</p>
+          <textarea id="i-urls" rows="3" placeholder="https://www.youtube.com/shorts/..."></textarea>
+          <div class="row">
+            <div><label>Blueprint name</label><input id="i-style" placeholder="my_style"></div>
+            <div><label>Analysis depth</label><select id="i-depth"><option value="fast">Fast (first 20 seconds)</option><option value="detailed" selected>Detailed (whole video)</option></select></div>
+            <div><label>Topic hint (optional)</label><input id="i-topic" placeholder="e.g. personal finance"></div>
+          </div>
+          <div class="actions">
+            <button id="i-analyze" class="primary">Analyze + propose ideas</button>
+            <label class="inline"><input type="checkbox" id="i-large"> allow long videos</label>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row between"><h3>Saved Style Blueprints</h3><div class="actions"><button id="i-sync">Sync Analytics</button></div></div>
+        <div id="i-blueprints" class="s muted">none yet</div>
+        <div id="i-top" class="s muted"></div>
       </div>
       <div id="runs"></div>
     </section>

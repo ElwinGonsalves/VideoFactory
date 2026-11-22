@@ -458,6 +458,17 @@ def cmd_daemon(a: argparse.Namespace) -> int:
         coalesce=True,
         next_run_time=datetime.now(ZoneInfo(schedule["defaults"]["timezone"])),
     )
+    from common import settings
+
+    if settings.load().get("analytics", {}).get("weekly"):
+
+        def _analytics() -> None:
+            from analyzer import sync_analytics
+
+            for line in sync_analytics.sync():
+                log.info(f"analytics: {line}")
+
+        sched.add_job(_analytics, "cron", day_of_week="mon", hour=9, id="analytics", max_instances=1)
     log.info(f"scheduler daemon started (every {a.interval}s, state {STATE})")
     try:
         sched.start()

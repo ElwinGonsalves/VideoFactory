@@ -41,6 +41,9 @@ IDEAS_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "title": {"type": "string"},
                     "hook": {"type": "string", "description": "first 3 seconds, spoken"},
+                    "hook_visual": {"type": "string", "description": "what the first 3 seconds show"},
+                    "aspect_ratio": {"type": "string", "enum": ["9:16", "16:9", "1:1"]},
+                    "duration_sec": {"type": "integer"},
                     "angle": {"type": "string", "description": "core concept / angle"},
                     "case_study": {"type": "string"},
                     "style": {"type": "string", "enum": REMOTION_STYLES},
@@ -423,6 +426,33 @@ def _blueprint_brief(blueprint: dict[str, Any] | None) -> str:
     return "Reference style blueprint (copy the STYLE, never the content):\n" + repr(keep)
 
 
+def _tokens(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2}
+
+
+def is_repeat(title: str, case_study: str, history: list[dict[str, str]], threshold: float = 0.6) -> bool:
+    """True when a new idea's title or case study overlaps one already made (token Jaccard >= threshold)."""
+    for h in history:
+        for new, old in ((title, h.get("title", "")), (case_study, h.get("case_study", ""))):
+            a, b = _tokens(new), _tokens(old)
+            if a and b and len(a & b) / len(a | b) >= threshold:
+                return True
+    return False
+
+
+def history_block(history: list[dict[str, str]], top: list[dict[str, Any]]) -> str:
+    lines = []
+    if history:
+        lines.append("Already made. Do NOT repeat these topics or case studies:")
+        lines += [
+            f"- {h['title']}" + (f" (case: {h['case_study']})" if h.get("case_study") else "") for h in history[:60]
+        ]
+    if top:
+        lines.append("Best performers so far (reuse the style of the hook, not the topic):")
+        lines += [f'- {t["views"]} views, style {t["style"]}: "{t["hook"] or t["title"]}"' for t in top]
+    return "\n".join(lines) or "No previous videos."
+
+
 def generate_ideas(
     *,
     blueprint: dict[str, Any] | None,
@@ -430,33 +460,49 @@ def generate_ideas(
     niche: str = "",
     reference_notes: str = "",
     provider: Provider | None = None,
+    history: list[dict[str, str]] | None = None,
+    top_performers: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
+    """5 pitch cards. `history` (from data/projects.db) is both put in the prompt and used to drop repeats."""
     provider = provider or get_provider()
+    history = history or []
     prompt = (
         "Propose exactly 5 distinct short-video ideas.\n"
         f"Channel niche: {niche or 'general explainers'}\n"
         f"Topic hint from the user: {topic_hint or 'none, choose strong evergreen topics'}\n"
         f"{_blueprint_brief(blueprint)}\n"
         f"Notes from the reference videos (transcript hooks, pacing):\n{reference_notes[:4000] or 'none'}\n"
-        "Each idea needs a pattern-interrupt hook, a clear concept, and one concrete real-world case study."
+        f"{history_block(history, top_performers or [])}\n"
+        "Each idea needs a spoken pattern-interrupt hook, what the first 3 seconds show, a clear concept, "
+        "one concrete real-world case study, the aspect ratio and a duration in seconds."
     )
     raw = provider.generate_json(prompt, IDEAS_SCHEMA, SYSTEM)
-    ideas = []
-    for i, idea in enumerate((raw.get("ideas") or [])[:5], 1):
+    ideas: list[dict[str, Any]] = []
+    for idea in raw.get("ideas") or []:
+        title, case = _clip(idea.get("title"), 100), _clip(idea.get("case_study"), 300)
+        if not title or is_repeat(title, case, history) or is_repeat(title, case, ideas):
+            continue
         ideas.append(
             {
-                "n": i,
-                "title": _clip(idea.get("title"), 100),
+                "n": len(ideas) + 1,
+                "title": title,
                 "hook": _clip(idea.get("hook"), 160),
+                "hook_visual": _clip(idea.get("hook_visual"), 200),
                 "angle": _clip(idea.get("angle"), 300),
-                "case_study": _clip(idea.get("case_study"), 300),
+                "case_study": case,
                 "style": idea.get("style") if idea.get("style") in ROUTES else "concept_explainer",
+                "aspect_ratio": idea.get("aspect_ratio")
+                if idea.get("aspect_ratio") in ("9:16", "16:9", "1:1")
+                else "9:16",
+                "duration_sec": max(15, min(1800, int(idea.get("duration_sec") or 50))),
                 "music_mood": idea.get("music_mood") if idea.get("music_mood") in MOODS else "documentary",
                 "why_it_works": _clip(idea.get("why_it_works"), 300),
             }
         )
+        if len(ideas) == 5:
+            break
     if len(ideas) < 3:
-        raise LLMError("model returned fewer than 3 ideas; try again")
+        raise LLMError("model returned fewer than 3 new ideas (the rest repeated earlier videos); try again")
     return ideas
 
 
