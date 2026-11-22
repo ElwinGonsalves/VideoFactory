@@ -65,6 +65,9 @@ DEFAULTS: dict[str, Any] = {
         "graph_api_version": "v23.0",
     },
     "clipper": {"speaker_tracking": False},
+    # Pre-flight for unattended uploads (Schedule tab): stay awake while work is pending, hold videos with
+    # unverified facts as needs_review, check the login this many minutes before each upload.
+    "scheduler": {"keep_awake": True, "safe_publish": True, "pre_check_minutes": 7},
     # weekly: the scheduler daemon syncs views/likes every Monday 09:00 (yt-dlp). channel_url matches videos by title.
     "analytics": {"weekly": False, "channel_url": ""},
 }

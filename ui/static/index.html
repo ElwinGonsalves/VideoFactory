@@ -162,24 +162,37 @@
 
     <!-- SCHEDULE -->
     <section id="tab-schedule" class="tab">
+      <div class="card preflight">
+        <h2>Pre-Flight</h2>
+        <div class="row preflight-row">
+          <label class="switch"><input type="checkbox" id="s-daemon"><span>Scheduler Daemon <b id="s-daemon-state">OFF</b></span></label>
+          <label class="switch" title="Windows will not sleep while jobs are pending or running"><input type="checkbox" id="s-awake"><span>Keep PC Awake</span></label>
+          <label class="switch" title="Videos with unverified facts are rendered but held as needs_review"><input type="checkbox" id="s-safe"><span>Safe-Publish Gate</span></label>
+          <div id="s-auth" class="auth-badges"></div>
+        </div>
+        <div id="caps" class="caps"></div>
+      </div>
       <div class="grid2">
         <div class="card">
-          <div class="row between"><h2>Scheduler</h2><label class="switch"><input type="checkbox" id="s-daemon"><span>daemon running</span></label></div>
-          <div id="caps" class="caps"></div>
-          <h3>Add job</h3>
+          <h2>Schedule Builder</h2>
+          <label>Videos (pick one or more)</label>
+          <div id="b-projects" class="pick-list"></div>
           <div class="row">
-            <div><label>Project</label><select id="s-project"></select></div>
-            <div><label>Type</label><select id="s-type"><option>generate_and_upload</option><option>generate_only</option><option>upload_only</option></select></div>
+            <div><label>First upload</label><select id="sb-first"><option value="now">Now</option><option value="tonight">Tonight 11:00 PM</option><option value="picker">Pick a time...</option></select></div>
+            <div id="sb-picker-wrap" hidden><label>Date and time</label><input id="sb-picker" type="datetime-local"></div>
+            <div><label>Spacing</label><select id="sb-spacing"><option value="30m">30 min</option><option value="45m">45 min</option><option value="1h" selected>1 hr</option><option value="2h">2 hr</option><option value="4h">4 hr</option><option value="custom">Custom</option></select></div>
+            <div id="sb-custom-wrap" hidden><label>Custom (90m, 1.5h)</label><input id="sb-custom" placeholder="90m"></div>
           </div>
-          <div class="row">
-            <div><label>Generate at</label><input id="s-gen" type="datetime-local"></div>
-            <div><label>Upload at</label><input id="s-up" type="datetime-local"></div>
+          <label>Rendering</label>
+          <div class="checks">
+            <label class="inline"><input type="radio" name="sb-mode" value="just_in_time" checked> auto-generate <input id="sb-lead" type="number" min="5" max="240" value="20" style="width:64px"> min before each upload</label>
+            <label class="inline"><input type="radio" name="sb-mode" value="all_now"> generate all now, upload staggered</label>
           </div>
-          <div class="row">
-            <div><label>Platforms</label><div id="s-platforms" class="checks"></div></div>
-            <div><label>YouTube visibility</label><select id="s-vis"><option value="">default</option><option>unlisted</option><option>private</option><option>public</option></select></div>
-          </div>
-          <div class="actions"><button id="s-add" class="primary">Add to schedule</button></div>
+          <div class="row"><div><label>Platforms</label><div id="s-platforms" class="checks"></div></div>
+            <div><label>YouTube visibility</label><select id="s-vis"><option value="">default</option><option>unlisted</option><option>private</option><option>public</option></select></div></div>
+          <h3>Preview</h3>
+          <div id="sb-preview" class="muted s">Pick videos to preview the times.</div>
+          <div class="actions"><button id="sb-create" class="primary" disabled>Add to schedule</button></div>
           <h3>Defaults</h3>
           <div class="row">
             <div><label>Timezone</label><input id="s-tz"></div>

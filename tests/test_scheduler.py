@@ -36,20 +36,20 @@ def conn(tmp_path: Path) -> sqlite3.Connection:
 def test_generate_then_upload_with_unlisted_default(conn: sqlite3.Connection) -> None:
     calls: list[tuple] = []
     stats = rs.tick(conn, schedule([job("a")]), lambda s: "out/a.meta.json", lambda *a: calls.append(a))
-    assert stats == {"generated": 1, "uploaded": 1}
+    assert {k: stats[k] for k in ("generated", "uploaded")} == {"generated": 1, "uploaded": 1}
     assert calls == [("out/a.meta.json", "youtube", "main", "unlisted")]
 
 
 def test_future_jobs_wait(conn: sqlite3.Connection) -> None:
     later = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
     stats = rs.tick(conn, schedule([job("a", generate_at=later)]), lambda s: "m", lambda *a: None)
-    assert stats == {"generated": 0, "uploaded": 0}
+    assert {k: stats[k] for k in ("generated", "uploaded")} == {"generated": 0, "uploaded": 0}
 
 
 def test_upload_waits_for_upload_at(conn: sqlite3.Connection) -> None:
     later = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
     stats = rs.tick(conn, schedule([job("a", upload_at=later)]), lambda s: "m", lambda *a: None)
-    assert stats == {"generated": 1, "uploaded": 0}
+    assert {k: stats[k] for k in ("generated", "uploaded")} == {"generated": 1, "uploaded": 0}
 
 
 def test_retry_with_backoff_then_fail(conn: sqlite3.Connection) -> None:
@@ -107,4 +107,6 @@ def test_upload_only_skips_generation(conn: sqlite3.Connection) -> None:
     calls: list[tuple] = []
     sch = schedule([job("a", type="upload_only", meta="output/a.meta.json")])
     stats = rs.tick(conn, sch, lambda s: pytest.fail("should not generate"), lambda *a: calls.append(a))
-    assert stats == {"generated": 0, "uploaded": 1} and calls[0][0] == "output/a.meta.json"
+    assert {k: stats[k] for k in ("generated", "uploaded")} == {"generated": 0, "uploaded": 1} and calls[0][
+        0
+    ] == "output/a.meta.json"

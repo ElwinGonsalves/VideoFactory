@@ -204,3 +204,9 @@ def status() -> dict[str, Any]:
         },
         "tiktok": {"token": bool(settings.env("TIKTOK_ACCESS_TOKEN"))},
     }
+
+
+def configured(platform: str) -> bool:
+    """True when the official-API credentials for a platform are all present."""
+    s = status()[platform]
+    return all(s.values()) if platform == "instagram" else bool(s.get("connected") or s.get("token"))

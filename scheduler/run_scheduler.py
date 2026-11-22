@@ -43,6 +43,7 @@ import yaml  # noqa: E402
 
 from common import ROOT  # noqa: E402
 from publisher.post_log import SCHEMA as POSTS_SCHEMA  # noqa: E402
+from scheduler import guard  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 SCHEDULE = HERE / "schedule.yaml"
@@ -99,7 +100,7 @@ def connect(path: Path = STATE) -> sqlite3.Connection:
     # UI, daemon, run-now and publish.py share this file; wait for a short write instead of failing.
     conn = sqlite3.connect(path, timeout=30)
     conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA + POSTS_SCHEMA)  # posts: shared with publisher/post_log.py
+    conn.executescript(SCHEMA + POSTS_SCHEMA + guard.GUARD_SCHEMA)  # posts: shared with publisher/post_log.py
     return conn
 
 
@@ -303,13 +304,25 @@ def tick(
     generate: Generate = default_generate,
     upload: Upload = default_upload,
     at: datetime | None = None,
+    auth_check: guard.AuthCheck | None = None,
+    safe_publish: bool | None = None,
+    pre_check_minutes: int | None = None,
 ) -> dict[str, int]:
-    """One scheduler pass. Returns counts of actions taken."""
+    """One scheduler pass. Returns counts of actions taken.
+
+    `auth_check` (the daemon passes guard.default_auth_check) verifies a platform's login shortly before an
+    upload and pauses that platform's queue when it fails. `safe_publish` holds videos with unverified facts.
+    """
+    from common import settings
+
     sync(conn, schedule)
     defaults = schedule["defaults"]
+    prefs = settings.load()["scheduler"]
+    safe_publish = prefs["safe_publish"] if safe_publish is None else safe_publish
+    window = int(prefs["pre_check_minutes"] if pre_check_minutes is None else pre_check_minutes)
     tz = ZoneInfo(defaults["timezone"])
     current = at or now_utc()
-    stats = {"generated": 0, "uploaded": 0}
+    stats = {"generated": 0, "uploaded": 0, "held": 0, "paused": 0}
     for job in conn.execute("SELECT * FROM jobs WHERE gen_status='pending'").fetchall():
         spec = json.loads(job["spec"])
         due = parse_time(spec.get("generate_at"), tz) or current
@@ -324,10 +337,40 @@ def tick(
         if job["gen_status"] not in ("done", "skipped"):
             continue
         spec = json.loads(job["spec"])
+        platform = up["platform"]
         due = parse_time(spec.get("upload_at"), tz) or current
         retry_at = parse_time(up["next_at"], tz)
-        if due <= current and (retry_at is None or retry_at <= current):
-            stats["uploaded"] += run_upload(conn, job, up, defaults, upload, tz)
+        if retry_at is not None and retry_at > current:
+            continue
+        if guard.is_paused(conn, platform):
+            continue  # the queue stays paused until the login is repaired: no retry storms
+        if auth_check is not None and guard.due_soon(due, current, window):
+            account = spec.get("account", defaults["account"])
+            if not guard.check_if_stale(conn, platform, account, auth_check, current):
+                if guard.pause_platform(conn, platform, "login expired"):
+                    event(
+                        conn, job["id"], "platform_paused", f"{platform}: login/session expired; reconnect in Settings"
+                    )
+                stats["paused"] += 1
+                continue
+        if due > current:
+            continue
+        meta = job["meta_path"] or spec.get("meta")
+        if safe_publish and meta and not guard.review_approved(conn, job["id"]):
+            claims = guard.unverified_claims(meta)
+            if claims:
+                conn.execute(
+                    "UPDATE uploads SET status='needs_review' WHERE job_id=? AND platform=?", (job["id"], platform)
+                )
+                event(
+                    conn,
+                    job["id"],
+                    "upload_held",
+                    f"{platform}: {len(claims)} unverified fact(s); approve it in the Schedule tab",
+                )
+                stats["held"] += 1
+                continue
+        stats["uploaded"] += run_upload(conn, job, up, defaults, upload, tz)
     return stats
 
 
@@ -434,15 +477,30 @@ def cmd_retry(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_check_auth(a: argparse.Namespace) -> int:
+    schedule = load_schedule()
+    ok, detail = guard.default_auth_check(a.platform, schedule["defaults"]["account"])
+    with closing(connect()) as conn:
+        guard.record_auth(conn, a.platform, ok, detail)
+        event(conn, None, "auth_ok" if ok else "auth_failed", f"{a.platform}: {detail}")
+    print(f"{a.platform}: {'OK' if ok else 'FAILED'} - {detail}", flush=True)
+    return 0 if ok else 1
+
+
 def cmd_daemon(a: argparse.Namespace) -> int:
     from apscheduler.schedulers.blocking import BlockingScheduler
 
     schedule = load_schedule()
 
+    awake = guard.KeepAwake()
+
     def _tick() -> None:
+        from common import settings
+
         with closing(connect()) as conn:
             try:
-                stats = tick(conn, load_schedule())
+                stats = tick(conn, load_schedule(), auth_check=guard.default_auth_check)
+                awake.want(bool(settings.load()["scheduler"]["keep_awake"]) and guard.work_pending(conn))
                 if any(stats.values()):
                     log.info(json.dumps({"tick": stats}))
             except Exception:  # noqa: BLE001 - keep the daemon alive
@@ -474,6 +532,8 @@ def cmd_daemon(a: argparse.Namespace) -> int:
         sched.start()
     except (KeyboardInterrupt, SystemExit):
         log.info("scheduler daemon stopped")
+    finally:
+        awake.close()
     return 0
 
 
@@ -504,6 +564,9 @@ def main(argv: list[str] | None = None) -> int:
     t = sub.add_parser("retry", help="Reset a failed job so it runs again")
     t.add_argument("job_id")
     t.set_defaults(func=cmd_retry)
+    ca = sub.add_parser("check-auth", help="Check a platform login now; a good result resumes its paused queue")
+    ca.add_argument("platform", choices=["youtube", "instagram", "tiktok"])
+    ca.set_defaults(func=cmd_check_auth)
     d = sub.add_parser("daemon", help="Run continuously")
     d.add_argument("--interval", type=int, default=60)
     d.set_defaults(func=cmd_daemon)

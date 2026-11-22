@@ -403,44 +403,80 @@ async function openInspector(slug) {
 let pendingSchedule = null;
 
 // ---------------------------------------------------------------- SCHEDULE
-const toLocal = (v) => (v ? String(v).slice(0, 16) : '');
-const fromLocal = (v) => (v ? `${v}:00` : null); // naive time = schedule timezone
+const STEPS = ['Queued', 'Rendering', 'Uploading', 'Published'];
+let schedProjects = [];
+const sbBody = () => {
+  const first = $('#sb-first').value === 'picker' ? ($('#sb-picker').value ? `${$('#sb-picker').value}:00` : 'now') : $('#sb-first').value;
+  const sp = $('#sb-spacing').value;
+  return {projects: checked($('#b-projects')), first, spacing: sp === 'custom' ? $('#sb-custom').value.trim() : sp,
+    mode: document.querySelector('[name=sb-mode]:checked').value, lead_min: +$('#sb-lead').value || 20,
+    platforms: checked($('#s-platforms')), visibility: $('#s-vis').value};
+};
+async function refreshPreview() {
+  const body = sbBody();
+  $('#sb-create').disabled = true;
+  if (!body.projects.length) { $('#sb-preview').textContent = 'Pick videos to preview the times.'; return; }
+  try {
+    const rows = await api('/api/schedule/builder/preview', {method: 'POST', body});
+    $('#sb-preview').innerHTML = `<table class="tbl"><tbody>${rows.map((r) => `<tr><td>${esc(r.title)}</td><td>${r.rendered ? 'ready' : `renders ${esc(r.generate_human)}`}</td><td><b>uploads ${esc(r.upload_human)}</b></td></tr>`).join('')}</tbody></table>`;
+    $('#sb-create').disabled = false;
+  } catch (e) { $('#sb-preview').textContent = `${e.message} ${e.hint || ''}`; }
+}
+['sb-first', 'sb-picker', 'sb-spacing', 'sb-custom', 'sb-lead'].forEach((id) => ($(`#${id}`).oninput = () => {
+  $('#sb-picker-wrap').hidden = $('#sb-first').value !== 'picker'; $('#sb-custom-wrap').hidden = $('#sb-spacing').value !== 'custom'; refreshPreview();
+}));
+$$('[name=sb-mode]').forEach((r) => (r.onchange = refreshPreview));
+$('#sb-first').onchange = $('#sb-spacing').onchange = $('#sb-first').oninput;
+$('#sb-create').onclick = () => act(async () => {
+  const r = await api('/api/schedule/builder', {method: 'POST', body: sbBody()}); toast(`Scheduled ${r.jobs.length} video(s)`); loaders.schedule();
+});
+const card = (j) => {
+  const ups = (j.uploads || []).map((u) => `<span class="badge ${u.status === 'done' ? 'ok' : u.status === 'failed' ? 'bad' : u.status === 'needs_review' ? 'warn' : ''}">${esc(u.platform)}: ${esc(u.status.replace('_', ' '))}</span>`).join(' ');
+  const steps = STEPS.map((s, i) => `<span class="${i < j.step ? 'done' : i === j.step ? (j.step === 3 ? 'done' : 'now') : ''}">${s}</span>`).join('');
+  const err = j.state?.last_error ? `<div class="s" style="color:var(--bad)">${esc(j.state.last_error.split('\n')[0])}</div>` : '';
+  return `<div class="item queue-card"><div style="flex:1">
+    <div class="t">${esc(j.title)} ${j.paused ? '<span class="badge">paused</span>' : ''}</div>
+    <div class="s muted">renders ${esc(j.generate_human)} · uploads <b>${esc(j.upload_human)}</b> · ${esc((j.platforms || []).join(', '))}</div>
+    <div class="steps">${steps}</div>${ups} ${j.link ? `<a href="${esc(j.link)}" target="_blank" rel="noopener noreferrer">view post</a>` : ''}
+    ${j.needs_review ? `<div class="warn">Held by the Safe-Publish Gate: this video has unverified facts. Check them in the Library, then <button class="small" data-release="${esc(j.id)}">Approve upload</button></div>` : ''}${err}
+    <div class="actions"><button class="small" data-pause="${esc(j.id)}" data-on="${j.paused ? 1 : 0}">${j.paused ? 'Resume' : 'Pause'}</button>
+      <button class="small" data-run="${esc(j.id)}">Run Now</button><button class="small" data-retry="${esc(j.id)}">Retry</button>
+      <button class="small" data-del="${esc(j.id)}">Remove</button></div></div></div>`;
+};
 loaders.schedule = async () => {
   OPTS = OPTS || (await api('/api/options'));
   const [s, projects] = await Promise.all([api('/api/schedule'), api('/api/projects')]);
-  $('#s-daemon').checked = s.daemon;
+  schedProjects = projects;
+  const pre = s.preflight;
+  $('#s-daemon').checked = s.daemon; $('#s-daemon-state').textContent = s.daemon ? 'ON' : 'OFF';
+  $('#s-awake').checked = pre.keep_awake; $('#s-safe').checked = pre.safe_publish;
+  $('#s-auth').innerHTML = ['youtube', 'instagram', 'tiktok'].map((p) => {
+    const a = pre.auth[p]; const mark = a.paused ? '✗ paused' : a.ok === true ? '✓' : a.ok === false ? '✗' : '?';
+    return `<span class="badge ${a.ok ? 'ok' : a.ok === false || a.paused ? 'bad' : ''}" title="${esc(a.detail || 'not checked yet')}">${esc(p)} ${mark}</span><button class="small" data-auth="${p}">Check</button>`;
+  }).join(' ');
   $('#caps').innerHTML = Object.entries(s.caps).map(([p, c]) => `<div class="cap">${esc(p)}: <b>${c.used}/${c.cap}</b> today</div>`).join('');
-  opts($('#s-project'), projects.map((p) => p.slug));
+  const sel = checked($('#b-projects')); const want = pendingSchedule || sel; pendingSchedule = null;
+  $('#b-projects').innerHTML = projects.map((p) => `<label><input type="checkbox" value="${esc(p.slug)}" ${want.includes(p.slug) ? 'checked' : ''}> ${esc(p.title || p.slug)} ${p.rendered ? '<span class="badge ok">rendered</span>' : ''}</label>`).join('') || '<span class="muted">No projects yet.</span>';
+  $$('#b-projects input').forEach((i) => (i.onchange = refreshPreview));
   if (!$('#s-platforms').children.length) checks($('#s-platforms'), OPTS.platforms, ['youtube']);
   $('#s-tz').value = s.defaults.timezone; $('#s-capig').value = s.defaults.instagram_daily_cap; $('#s-capyt').value = s.defaults.youtube_daily_cap; $('#s-captt').value = s.defaults.tiktok_daily_cap;
-  $('#s-jobs').innerHTML = s.jobs.map((j) => {
-    const st = j.state?.gen_status || (j.enabled === false ? 'paused' : 'pending');
-    const ups = (j.uploads || []).map((u) => `<span class="badge ${u.status === 'done' ? 'ok' : u.status === 'failed' ? 'bad' : ''}">${esc(u.platform)}: ${esc(u.status)}</span>`).join(' ');
-    return `<div class="item"><div><div class="t">${esc(j.id)} <span class="badge">${esc(j.type)}</span></div>
-      <div class="s">gen ${esc(toLocal(j.generate_at) || 'asap')} → up ${esc(toLocal(j.upload_at) || 'asap')} · ${esc((j.platforms || []).join(', '))}</div>
-      <div class="s"><span class="badge ${st === 'done' ? 'ok' : st === 'failed' ? 'bad' : ''}">${esc(st)}</span> ${ups}</div>
-      ${j.state?.last_error ? `<div class="s" style="color:var(--bad)">${esc(j.state.last_error.split('\n')[0])}</div>` : ''}</div>
-      <div class="actions"><label class="inline"><input type="checkbox" data-en="${esc(j.id)}" ${j.enabled === false ? '' : 'checked'}> on</label>
-        <button class="small" data-run="${esc(j.id)}">Run now</button><button class="small" data-retry="${esc(j.id)}">Retry</button>
-        <button class="small" data-del="${esc(j.id)}">✕</button></div></div>`;
-  }).join('') || '<p class="muted">No scheduled jobs.</p>';
+  $('#s-jobs').innerHTML = s.jobs.map(card).join('') || '<p class="muted">Nothing scheduled.</p>';
   $('#s-events').textContent = s.events.map((e) => `${e.at.slice(0, 19)}  ${e.job_id || '-'}  ${e.kind}  ${e.detail || ''}`).join('\n');
-  $$('[data-en]').forEach((c) => (c.onchange = () => act(async () => { await api(`/api/schedule/jobs/${encodeURIComponent(c.dataset.en)}`, {method: 'PUT', body: {enabled: c.checked}}); loaders.schedule(); })));
+  $$('[data-pause]').forEach((b) => (b.onclick = () => act(async () => { await api(`/api/schedule/jobs/${encodeURIComponent(b.dataset.pause)}`, {method: 'PUT', body: {enabled: b.dataset.on === '1'}}); loaders.schedule(); })));
   $$('[data-run]').forEach((b) => (b.onclick = () => act(async () => watch(await api(`/api/schedule/run/${encodeURIComponent(b.dataset.run)}`, {method: 'POST'}), 'Run now', () => loaders.schedule()))));
   $$('[data-retry]').forEach((b) => (b.onclick = () => act(async () => watch(await api(`/api/schedule/retry/${encodeURIComponent(b.dataset.retry)}`, {method: 'POST'}), 'Retry', () => loaders.schedule()))));
-  $$('[data-del]').forEach((b) => (b.onclick = () => act(async () => { if (!confirm(`Delete job ${b.dataset.del}?`)) return; await api(`/api/schedule/jobs/${encodeURIComponent(b.dataset.del)}`, {method: 'DELETE'}); loaders.schedule(); })));
+  $$('[data-release]').forEach((b) => (b.onclick = () => act(async () => { if (!confirm('Have you checked every unverified fact?')) return; await api(`/api/schedule/release/${encodeURIComponent(b.dataset.release)}`, {method: 'POST'}); loaders.schedule(); })));
+  $$('[data-del]').forEach((b) => (b.onclick = () => act(async () => { if (!confirm('Remove this job from the schedule?')) return; await api(`/api/schedule/jobs/${encodeURIComponent(b.dataset.del)}`, {method: 'DELETE'}); loaders.schedule(); })));
+  $$('[data-auth]').forEach((b) => (b.onclick = () => act(async () => watch(await api('/api/schedule/check-auth', {method: 'POST', body: {platform: b.dataset.auth}}), `Checking ${b.dataset.auth} session`, () => loaders.schedule()))));
+  refreshPreview();
 };
-$('#s-add').onclick = () => act(async () => {
-  const project = $('#s-project').value; if (!project) throw new Error('Create a project first');
-  const body = {id: `${project}-${Date.now().toString(36)}`, project, type: $('#s-type').value, generate_at: fromLocal($('#s-gen').value), upload_at: fromLocal($('#s-up').value),
-    platforms: checked($('#s-platforms')), visibility: $('#s-vis').value};
-  await api('/api/schedule/jobs', {method: 'POST', body}); toast('Scheduled'); loaders.schedule();
-});
 $('#s-save-defaults').onclick = () => act(async () => {
   await api('/api/schedule/defaults', {method: 'PUT', body: {timezone: $('#s-tz').value, instagram_daily_cap: +$('#s-capig').value, youtube_daily_cap: +$('#s-capyt').value, tiktok_daily_cap: +$('#s-captt').value}});
   toast('Defaults saved'); loaders.schedule();
 });
-$('#s-daemon').onchange = (e) => act(async () => { await api('/api/schedule/daemon', {method: 'POST', body: {run: e.target.checked}}); toast(e.target.checked ? 'Scheduler daemon started' : 'Daemon stopped'); });
+$('#s-daemon').onchange = (e) => act(async () => { await api('/api/schedule/daemon', {method: 'POST', body: {run: e.target.checked}}); $('#s-daemon-state').textContent = e.target.checked ? 'ON' : 'OFF'; toast(e.target.checked ? 'Scheduler daemon started' : 'Daemon stopped'); });
+const savePre = () => act(() => api('/api/schedule/preflight', {method: 'PUT', body: {keep_awake: $('#s-awake').checked, safe_publish: $('#s-safe').checked}}));
+$('#s-awake').onchange = savePre; $('#s-safe').onchange = savePre;
 
 // ---------------------------------------------------------------- SETTINGS
 let SETTINGS = null;

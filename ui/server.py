@@ -19,7 +19,7 @@ import sqlite3
 import subprocess
 import sys
 import webbrowser
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +36,7 @@ from common import OUTPUT, PROJECTS, ROOT, paths, read_json, settings, write_jso
 from llm.tasks import VISUAL_TYPES  # noqa: E402
 from pipeline.router import ROUTES  # noqa: E402
 from prompts.script_templates import REGISTRY  # noqa: E402
+from scheduler import builder, guard  # noqa: E402
 from ui.jobs import JobManager  # noqa: E402
 from ui.streaming import download_file, stream_file  # noqa: E402
 
@@ -737,8 +738,6 @@ def _schedule_raw() -> dict[str, Any]:
 
 @app.get("/api/schedule")
 def schedule() -> dict[str, Any]:
-    from contextlib import closing
-
     from publisher import post_log
     from scheduler import run_scheduler as rs
 
@@ -760,20 +759,82 @@ def schedule() -> dict[str, Any]:
     except sqlite3.OperationalError as exc:  # another process is mid-write; the page just retries
         raise HTTPException(503, f"scheduler state is busy ({exc}); refresh in a moment") from exc
     proc = daemon["proc"]
+    tz = sch["defaults"]["timezone"]
+    prefs = settings.load()["scheduler"]
+    with closing(rs.connect()) as conn:
+        auth = guard.auth_overview(conn)
+        held = {r["job_id"] for r in conn.execute("SELECT job_id FROM uploads WHERE status='needs_review'")}
+    from common import db as _db
+
+    with _db.connect() as dbc:
+        links = {r["project_id"]: r["url"] for r in dbc.execute("SELECT project_id, url FROM published")}
+    cards = []
+    for j in _schedule_raw().get("jobs", []):
+        st, upl = state.get(j["id"]), ups.get(j["id"], [])
+        project = Path(str(j.get("script_or_prompt") or j.get("meta") or "")).parent.name
+        if j.get("meta"):
+            project = Path(j["meta"]).stem.removesuffix(".meta")
+        cards.append(
+            {
+                **j,
+                "state": st,
+                "uploads": upl,
+                "title": _title_of(project) or j["id"],
+                "generate_human": builder.human_time(j.get("generate_at"), tz)
+                if j.get("generate_at")
+                else "as soon as possible",
+                "upload_human": builder.human_time(j.get("upload_at"), tz)
+                if j.get("upload_at")
+                else "right after rendering",
+                "step": _job_step(j, st, upl),
+                "needs_review": j["id"] in held,
+                "link": links.get(project, ""),
+                "paused": j.get("enabled", True) is False,
+            }
+        )
     return {
         "defaults": sch["defaults"],
-        "jobs": [
-            {**j, "state": state.get(j["id"]), "uploads": ups.get(j["id"], [])} for j in _schedule_raw().get("jobs", [])
-        ],
+        "jobs": cards,
         "events": events,
         "caps": caps,
         "posts": post_log.recent(20),
         "daemon": bool(proc and proc.poll() is None),
+        "preflight": {"keep_awake": prefs["keep_awake"], "safe_publish": prefs["safe_publish"], "auth": auth},
     }
 
 
+STEPS = ["Queued", "Rendering", "Uploading", "Published"]
+
+
+def _job_step(job: dict[str, Any], state: dict[str, Any] | None, uploads: list[dict[str, Any]]) -> int:
+    """Current stage of a queue card: 0 queued, 1 rendering, 2 uploading (or waiting to), 3 published."""
+    if uploads and all(u["status"] == "done" for u in uploads):
+        return 3
+    if any(u["status"] == "running" for u in uploads):
+        return 2
+    gen = (state or {}).get("gen_status", "pending")
+    if gen == "running":
+        return 1
+    if gen in ("done", "skipped"):
+        return 2
+    return 0
+
+
+def _title_of(project: str) -> str:
+    script = PROJECTS / project / "script.json" if project else None
+    if script and script.exists():
+        try:
+            return str(read_json(script).get("title", ""))
+        except ValueError:
+            return ""
+    meta = paths.find(project, "meta") if project else None
+    return str(read_json(meta).get("title", "")) if meta else ""
+
+
 def _write_schedule(data: dict[str, Any]) -> None:
-    SCHEDULE.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    from scheduler import jobs as sched_jobs
+
+    sched_jobs.write(data, SCHEDULE)
 
 
 @app.post("/api/schedule/jobs")
@@ -843,6 +904,103 @@ def schedule_defaults(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
     data["defaults"] = {**(data.get("defaults") or {}), **{k: v for k, v in body.items() if k in allowed}}
     _write_schedule(data)
     return data["defaults"]
+
+
+@app.put("/api/schedule/preflight")
+def put_preflight(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    update = {k: bool(body[k]) for k in ("keep_awake", "safe_publish") if k in body}
+    return settings.save_prefs({"scheduler": update})["scheduler"]
+
+
+@app.post("/api/schedule/check-auth")
+def schedule_check_auth(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    platform = body.get("platform")
+    if platform not in ("youtube", "instagram", "tiktok"):
+        raise HTTPException(400, "platform must be youtube, instagram or tiktok")
+    return jobs.submit(
+        "login", f"check {platform} session", ["scheduler/run_scheduler.py", "check-auth", platform]
+    ).public()
+
+
+@app.post("/api/schedule/release/{job_id}")
+def release_held(job_id: str) -> dict[str, Any]:
+    """Approve a video the Safe-Publish Gate held, after the facts have been checked by a human."""
+    from scheduler import run_scheduler as rs
+
+    with closing(rs.connect()) as conn:
+        n = conn.execute(
+            "UPDATE uploads SET status='pending' WHERE job_id=? AND status='needs_review'", (_slug_ok(job_id),)
+        ).rowcount
+        if not n:
+            raise HTTPException(404, "that job is not waiting for review")
+        rs.event(conn, job_id, "review_approved", "facts checked by you; upload released")
+        conn.commit()
+    return {"ok": True, "released": n}
+
+
+def _builder_plan(body: dict[str, Any]) -> list[dict[str, Any]]:
+    slugs = [_slug_ok(str(s)) for s in body.get("projects", [])]
+    if not slugs:
+        raise HTTPException(400, "pick at least one video")
+    tz = _schedule_raw().get("defaults", {}).get("timezone", "Asia/Kolkata")
+    try:
+        return builder.plan(
+            slugs,
+            first=str(body.get("first", "now")),
+            spacing=str(body.get("spacing", "1h")),
+            mode=str(body.get("mode", "all_now")),
+            tz_name=tz,
+            lead_min=int(body.get("lead_min", builder.RENDER_LEAD_MIN)),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.post("/api/schedule/builder/preview")
+def builder_preview(body: dict[str, Any] = Body(...)) -> list[dict[str, Any]]:
+    tz = _schedule_raw().get("defaults", {}).get("timezone", "Asia/Kolkata")
+    return [
+        {
+            "slug": e["slug"],
+            "title": _title_of(e["slug"]) or e["slug"],
+            "upload_at": e["upload_at"].isoformat(),
+            "upload_human": builder.human_time(e["upload_at"], tz),
+            "generate_human": builder.human_time(e["generate_at"], tz) if e["generate_at"] else "now",
+            "rendered": paths.find(e["slug"], "meta") is not None,
+        }
+        for e in _builder_plan(body)
+    ]
+
+
+@app.post("/api/schedule/builder")
+def builder_create(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    import time as _time
+
+    from scheduler import jobs as sched_jobs
+
+    platforms = body.get("platforms") or ["youtube"]
+    made = []
+    for e in _builder_plan(body):
+        slug = e["slug"]
+        meta = paths.find(slug, "meta")
+        job: dict[str, Any] = {
+            "id": f"{slug}-{int(_time.time()) % 100000}",
+            "type": "upload_only" if meta else "generate_and_upload",
+            "upload_at": e["upload_at"].isoformat(),
+            "platforms": platforms,
+        }
+        if meta:
+            job["meta"] = rel(meta)
+        else:
+            if not (PROJECTS / slug / "script.json").exists():
+                raise HTTPException(404, f"no script for {slug}")
+            job["script_or_prompt"] = f"projects/{slug}/script.json"
+            job["generate_at"] = e["generate_at"].isoformat() if e["generate_at"] else None
+        if body.get("visibility"):
+            job["visibility"] = body["visibility"]
+        sched_jobs.add_job(job, SCHEDULE)
+        made.append(job["id"])
+    return {"ok": True, "jobs": made}
 
 
 @app.post("/api/schedule/run/{job_id}")
