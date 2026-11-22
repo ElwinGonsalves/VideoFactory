@@ -96,7 +96,8 @@ log = logging.getLogger("scheduler")
 
 # ---------------------------------------------------------------- state helpers
 def connect(path: Path = STATE) -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
+    # UI, daemon, run-now and publish.py share this file; wait for a short write instead of failing.
+    conn = sqlite3.connect(path, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA + POSTS_SCHEMA)  # posts: shared with publisher/post_log.py
     return conn
@@ -115,6 +116,9 @@ def parse_time(value: Any, tz: ZoneInfo) -> datetime | None:
 
 def event(conn: sqlite3.Connection, job_id: str | None, kind: str, detail: str = "") -> None:
     conn.execute("INSERT INTO events VALUES (?,?,?,?)", (now_utc().isoformat(), job_id, kind, detail[:4000]))
+    # Commit at once: an open write transaction here used to stay open for a whole render
+    # (event -> generate()), locking state.sqlite for the UI and every other process.
+    conn.commit()
     log.info(json.dumps({"job": job_id, "event": kind, "detail": detail[:500]}))
 
 

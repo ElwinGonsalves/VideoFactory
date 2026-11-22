@@ -37,7 +37,7 @@ class CapReached(RuntimeError):
 
 def _connect(path: Path = STATE) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=30)  # shared with the scheduler and the UI
     conn.executescript(SCHEMA)
     return conn
 

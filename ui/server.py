@@ -12,11 +12,14 @@ unmasked.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import secrets
+import sqlite3
 import subprocess
 import sys
 import webbrowser
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -36,7 +39,22 @@ TOKEN = secrets.token_urlsafe(24)
 FILE_ROOTS = [OUTPUT, PROJECTS, ROOT / "analyzer" / "work", ROOT / "studio" / "public" / "assets"]
 SCHEDULE = ROOT / "scheduler" / "schedule.yaml"
 
-app = FastAPI(title="video-factory", docs_url=None, redoc_url=None, openapi_url=None)
+
+def _quiet_disconnects(loop: asyncio.AbstractEventLoop, context: dict[str, Any]) -> None:
+    """Windows' Proactor loop logs a traceback whenever a browser drops a connection early
+    (seeking a video, closing a tab). That's normal; log everything else as usual."""
+    if isinstance(context.get("exception"), (ConnectionResetError, ConnectionAbortedError)):
+        return
+    loop.default_exception_handler(context)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]
+    asyncio.get_running_loop().set_exception_handler(_quiet_disconnects)
+    yield
+
+
+app = FastAPI(title="video-factory", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 jobs = JobManager()
 daemon: dict[str, subprocess.Popen[bytes] | None] = {"proc": None}
 
@@ -405,19 +423,22 @@ def schedule() -> dict[str, Any]:
     from scheduler import run_scheduler as rs
 
     sch = rs.load_schedule()
-    with closing(rs.connect()) as conn:
-        rs.sync(conn, sch)
-        state = {
-            r["id"]: dict(r)
-            for r in conn.execute("SELECT id, gen_status, gen_attempts, last_error, meta_path FROM jobs")
+    try:
+        with closing(rs.connect()) as conn:
+            rs.sync(conn, sch)
+            state = {
+                r["id"]: dict(r)
+                for r in conn.execute("SELECT id, gen_status, gen_attempts, last_error, meta_path FROM jobs")
+            }
+            ups: dict[str, list[dict[str, Any]]] = {}
+            for r in conn.execute("SELECT job_id, platform, status, attempts, next_at, last_error FROM uploads"):
+                ups.setdefault(r["job_id"], []).append(dict(r))
+            events = [dict(r) for r in conn.execute("SELECT * FROM events ORDER BY at DESC LIMIT 25")]
+        caps = {
+            p: {"used": post_log.count_today(p), "cap": post_log.cap_for(p)} for p in ("youtube", "instagram", "tiktok")
         }
-        ups: dict[str, list[dict[str, Any]]] = {}
-        for r in conn.execute("SELECT job_id, platform, status, attempts, next_at, last_error FROM uploads"):
-            ups.setdefault(r["job_id"], []).append(dict(r))
-        events = [dict(r) for r in conn.execute("SELECT * FROM events ORDER BY at DESC LIMIT 25")]
-    caps = {
-        p: {"used": post_log.count_today(p), "cap": post_log.cap_for(p)} for p in ("youtube", "instagram", "tiktok")
-    }
+    except sqlite3.OperationalError as exc:  # another process is mid-write; the page just retries
+        raise HTTPException(503, f"scheduler state is busy ({exc}); refresh in a moment") from exc
     proc = daemon["proc"]
     return {
         "defaults": sch["defaults"],

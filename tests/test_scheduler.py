@@ -86,6 +86,23 @@ def test_sync_does_not_reset_progress(conn: sqlite3.Connection) -> None:
     assert conn.execute("SELECT status FROM uploads").fetchone()[0] == "done"
 
 
+def test_state_not_locked_during_generation(tmp_path: Path) -> None:
+    """Regression: an uncommitted event kept state.sqlite write-locked for a whole render,
+    so the UI's Schedule tab failed with 'database is locked'."""
+    db = tmp_path / "state.sqlite"
+    conn = rs.connect(db)
+
+    def generate(spec: dict) -> str:
+        other = sqlite3.connect(db, timeout=0.5)  # what the UI does while a render runs
+        other.execute("INSERT INTO events VALUES ('t', NULL, 'probe', '')")
+        other.commit()
+        other.close()
+        return "m"
+
+    stats = rs.tick(conn, schedule([job("a", type="generate_only")]), generate, lambda *a: None)
+    assert stats["generated"] == 1
+
+
 def test_upload_only_skips_generation(conn: sqlite3.Connection) -> None:
     calls: list[tuple] = []
     sch = schedule([job("a", type="upload_only", meta="output/a.meta.json")])
