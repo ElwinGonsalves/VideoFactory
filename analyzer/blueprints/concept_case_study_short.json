@@ -1,0 +1,31 @@
+{
+  "style_name": "concept_case_study_short",
+  "aspect_ratio": "9:16",
+  "target_duration_sec": 50,
+  "recommended_engine": "remotion",
+  "hook_first_3s": {
+    "visual_pattern": "Big bold question card fills the safe area, accent highlighter sweeps the key word",
+    "verbal_pattern": "A counter-intuitive question in under 8 words",
+    "visual_vs_verbal_contrast": "Screen shows the surprising number while the voice asks the question"
+  },
+  "pacing": {
+    "avg_shot_sec": 2.1,
+    "median_shot_sec": 2.0,
+    "words_per_minute": 165,
+    "caption_style": "word_highlight",
+    "transition_style": "hard_cut"
+  },
+  "audio_profile": {
+    "narration_tone": "energetic_short",
+    "music_mood": "documentary",
+    "sfx_cues": ["subtle_whoosh", "pop"]
+  },
+  "beat_template": [
+    { "beat": "hook", "pct_duration": 0.06, "visual_role": "pattern-interrupt question card" },
+    { "beat": "concept", "pct_duration": 0.30, "visual_role": "flow diagram / bullets" },
+    { "beat": "case_study", "pct_duration": 0.46, "visual_role": "real figures: stat card + bar chart" },
+    { "beat": "takeaway", "pct_duration": 0.18, "visual_role": "one-line takeaway that loops to the hook" }
+  ],
+  "sources": ["built-in default (BUILD_SPEC section 4)"],
+  "created": "2026-11-22"
+}
