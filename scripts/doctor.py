@@ -74,8 +74,43 @@ def check_python_packages() -> None:
                 "soundfile", "numpy", "yt_dlp", "PIL"]  # fmt: skip
     for mod in required:
         check(f"py: {mod}", importlib.util.find_spec(mod) is not None)
-    for mod in ("kokoro", "manim", "handanim", "pytest", "ruff"):
+    for mod in ("fastapi", "uvicorn", "multipart"):
+        check(f"py: {mod} (web UI)", importlib.util.find_spec(mod) is not None, hint="pip install -r requirements.txt")
+    for mod in ("kokoro", "manim", "handanim", "googleapiclient", "google_auth_oauthlib", "pytest", "ruff"):
         check(f"py: {mod}", importlib.util.find_spec(mod) is not None, required=False)
+
+
+def check_llm() -> None:
+    from common import settings
+
+    cfg = settings.load()["llm"]
+    provider = cfg["provider"]
+    key = {"gemini": "GEMINI_API_KEY", "openai": "OPENAI_API_KEY"}.get(provider)
+    if key:
+        ok = bool(settings.env(key))
+        check(
+            f"LLM: {provider} key",
+            ok,
+            cfg.get(f"{provider}_model", ""),
+            required=False,
+            hint=f"add {key} in the UI Settings tab",
+        )
+    else:
+        import requests
+
+        host = settings.env("OLLAMA_HOST", "http://127.0.0.1:11434")
+        try:
+            tags = requests.get(f"{host}/api/tags", timeout=3).json().get("models", [])
+            names = [m["name"] for m in tags]
+            check(
+                "LLM: ollama",
+                cfg["ollama_model"] in names,
+                f"{len(names)} model(s) at {host}",
+                required=False,
+                hint=f"ollama pull {cfg['ollama_model']}",
+            )
+        except Exception:  # noqa: BLE001
+            check("LLM: ollama", False, host, required=False, hint="install Ollama and start it")
 
 
 def check_gpu() -> None:
@@ -141,6 +176,37 @@ def check_assets() -> None:
     skills = list((ROOT / ".agent" / "skills").rglob("SKILL.md"))
     check("agent skills (.agent/skills)", len(skills) > 0, f"{len(skills)} SKILL.md files", required=False)
     check("steering file", (ROOT / ".kiro" / "steering" / "video-factory.md").exists())
+    check(
+        "map data (geo/countries.geojson)",
+        (STUDIO / "public" / "geo" / "countries.geojson").exists(),
+        hint="python scripts/fetch_geo.py",
+    )
+    check(
+        "textures (studio/public/textures)",
+        (STUDIO / "public" / "textures" / "paper_grain.png").exists(),
+        required=False,
+        hint="python scripts/bootstrap.py --assets (made automatically on first render)",
+    )
+    sfx = list((MUSIC_LIBRARY.parent / "sfx_library").glob("*.wav"))
+    check(
+        "sfx library",
+        len(sfx) >= 8,
+        f"{len(sfx)} sounds",
+        required=False,
+        hint="python scripts/bootstrap.py --assets (made automatically on first render)",
+    )
+    check(
+        "handanim MCP config",
+        (ROOT / ".kiro" / "settings" / "mcp.json").exists(),
+        required=False,
+        hint="python scripts/bootstrap.py --mcp",
+    )
+    check(
+        "explainroo node_modules",
+        (ROOT / "engines" / "explainroo" / "node_modules").exists(),
+        required=False,
+        hint="python scripts/bootstrap.py --engines",
+    )
     for eng in ("openmontage", "explainroo", "clipper"):
         check(
             f"engine {eng}",
@@ -184,6 +250,7 @@ def check_publisher() -> None:
 def main() -> int:
     check_binaries()
     check_python_packages()
+    check_llm()
     check_gpu()
     check_studio()
     check_music()

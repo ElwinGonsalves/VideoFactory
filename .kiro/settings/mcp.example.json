@@ -1,0 +1,15 @@
+{
+    "mcpServers":  {
+                       "handanim":  {
+                                        "args":  [
+                                                     "-m",
+                                                     "aianim.mcp_server"
+                                                 ],
+                                        "command":  "\u003cabsolute path to video-factory\u003e/.venv/Scripts/python.exe",
+                                        "autoApprove":  [
+
+                                                        ],
+                                        "disabled":  false
+                                    }
+                   }
+}

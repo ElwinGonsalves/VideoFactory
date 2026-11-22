@@ -76,7 +76,7 @@ def main() -> int:
         shutil.rmtree(PROJECT)
     write_json(PROJECT / "script.json", SCRIPT)
 
-    result = produce(PROJECT)
+    result = produce(PROJECT, use_llm=False)  # deterministic: no API key needed
     report = result["report"]
     run_dir = PROJECT / "assets"
     failures: list[str] = []
@@ -104,9 +104,20 @@ def main() -> int:
     if ducked > base - 2.0:
         failures.append(f"ducking too weak: music {base:.1f} dB -> {ducked:.1f} dB under speech")
 
-    stills = sorted((PROJECT / "qa").glob("*.png"))
-    if len(stills) != 4:
-        failures.append(f"expected 4 QA stills, found {len(stills)}")
+    qa_dir = PROJECT / "qa"
+    stills = [qa_dir / f"{n}.png" for n in ("cover", "hook", "early", "mid", "outro")]
+    if not all(p.exists() for p in stills):
+        failures.append("missing QA stills (cover + hook/early/mid/outro)")
+    qa_report = result.get("qa") or {}
+    if not qa_report.get("ok"):
+        issues = [f"{f['frame']}: {i}" for f in qa_report.get("frames", []) for i in f["issues"]]
+        failures.append("visual QA failed: " + "; ".join(issues))
+    thumb = OUTPUT / "smoke_test.thumb.jpg"
+    if not thumb.exists() or thumb.stat().st_size > 2_000_000:
+        failures.append("thumbnail missing or over YouTube's 2 MB limit")
+    sfx_used = read_json(run_dir / "attribution.json").get("sfx", [])
+    if not sfx_used:
+        failures.append("no sound effects were mixed")
 
     print("\n=== smoke test ===")
     print(f"file      : {report['file']}")
@@ -117,7 +128,9 @@ def main() -> int:
     print(f"loudness  : {lufs:.1f} LUFS")
     print(f"ducking   : music {base:.1f} dB -> {ducked:.1f} dB under speech ({base - ducked:.1f} dB)")
     print(f"music     : {track['file']}")
-    print(f"QA stills : {len(stills)} in {PROJECT / 'qa'}")
+    print(f"visual QA : {'pass' if qa_report.get('ok') else 'FAIL'} ({len(stills)} frames incl. cover) in {qa_dir}")
+    print(f"sfx       : {', '.join(sfx_used) or 'none'}")
+    print(f"thumbnail : {thumb} ({thumb.stat().st_size // 1024 if thumb.exists() else 0} KB)")
     print(f"time      : {time.time() - t0:.0f}s")
 
     if not a.keep:
