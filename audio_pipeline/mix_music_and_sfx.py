@@ -44,7 +44,7 @@ MOODS = ("chill", "documentary", "upbeat", "dramatic")
 TARGET_LUFS = -14.0
 TAIL_SEC = 0.5
 CACHE_DIR = MUSIC_LIBRARY.parent / "cache"
-USER_AGENT = "video-factory/1.0 (local tool; contact: owner)"
+USER_AGENT = "video-factory/1.0 (https://github.com/ElwinGonsalves/video-factory; local zero-API video tool)"
 
 
 def load_manifest() -> list[dict[str, Any]]:
@@ -104,8 +104,68 @@ def fetch_archive_track(mood: str) -> dict[str, Any] | None:
     return None
 
 
+WIKIMEDIA_OK_LICENSES = ("public domain", "cc0", "cc by", "cc-by")  # no NC/ND, no share-alike surprises in SA
+
+
+def fetch_wikimedia_track(mood: str) -> dict[str, Any] | None:
+    """Public-domain / CC0 / CC-BY instrumental from Wikimedia Commons (keyless), saved as MP3."""
+    try:
+        res = requests.get(
+            "https://commons.wikimedia.org/w/api.php",
+            params={
+                "action": "query",
+                "format": "json",
+                "generator": "search",
+                "gsrnamespace": 6,
+                "gsrsearch": f"{mood} instrumental music filetype:audio",
+                "gsrlimit": 10,
+                "prop": "imageinfo",
+                "iiprop": "url|extmetadata|mime|size",
+            },
+            headers={"User-Agent": USER_AGENT},
+            timeout=30,
+        )
+        pages = (res.json().get("query", {}) or {}).get("pages", {}).values()
+        for page in pages:
+            info = (page.get("imageinfo") or [{}])[0]
+            meta = info.get("extmetadata", {})
+            lic = str(meta.get("LicenseShortName", {}).get("value", "")).lower()
+            if not any(ok in lic for ok in WIKIMEDIA_OK_LICENSES) or "nc" in lic.split("-") or "nd" in lic.split("-"):
+                continue
+            if not info.get("url") or int(info.get("size", 0)) > 40_000_000:
+                continue
+            stem = re.sub(r"[^A-Za-z0-9._-]+", "_", page["title"].removeprefix("File:"))[:80]
+            raw = CACHE_DIR / f"wm_{stem}"
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            with requests.get(info["url"], headers={"User-Agent": USER_AGENT}, stream=True, timeout=120) as r:
+                r.raise_for_status()
+                with raw.open("wb") as fh:
+                    for chunk in r.iter_content(1 << 16):
+                        fh.write(chunk)
+            dest = MUSIC_LIBRARY / mood / (Path(stem).stem + ".mp3")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            run([which("ffmpeg"), "-y", "-v", "error", "-i", str(raw), "-vn", "-ac", "2", "-b:a", "192k", str(dest)])
+            raw.unlink(missing_ok=True)
+            artist = re.sub(r"<[^>]+>", "", meta.get("Artist", {}).get("value", "unknown")).strip()
+            track = {
+                "file": f"{mood}/{dest.name}",
+                "mood": mood,
+                "bpm": None,
+                "license": meta.get("LicenseShortName", {}).get("value", "see source"),
+                "source": info.get("descriptionurl", ""),
+                "title": page["title"].removeprefix("File:"),
+                "artist": artist or "unknown",
+            }
+            write_json(MUSIC_LIBRARY / "manifest.json", {"tracks": [*load_manifest(), track]})
+            return track
+    except (requests.RequestException, KeyError, ValueError, RuntimeError):
+        return None
+    return None
+
+
 def choose_track(mood: str, seed: str) -> dict[str, Any]:
-    track = pick_local_track(mood, seed) or fetch_archive_track(mood)
+    """Local library first, then Archive.org, then Wikimedia Commons, then any local mood."""
+    track = pick_local_track(mood, seed) or fetch_archive_track(mood) or fetch_wikimedia_track(mood)
     if track is None:
         # Last resort: any local track, so a render never fails on a missing mood.
         for other in MOODS:
