@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>video-factory</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script>window.VF_TOKEN = "__VF_TOKEN__";</script>
+</head>
+<body>
+  <header>
+    <div class="brand">video<span>factory</span></div>
+    <nav id="tabs">
+      <button data-tab="create" class="active">Create</button>
+      <button data-tab="ideas">Ideas</button>
+      <button data-tab="library">Library</button>
+      <button data-tab="schedule">Schedule</button>
+      <button data-tab="settings">Settings</button>
+    </nav>
+    <div id="jobs-pill" title="Running jobs">0 running</div>
+  </header>
+
+  <main>
+    <!-- CREATE -->
+    <section id="tab-create" class="tab active">
+      <div class="grid2">
+        <div class="card">
+          <h2>New video from a prompt</h2>
+          <p class="muted">The language model (Settings) writes a 45-58 s hook / concept / case study / takeaway script. Review it, then render.</p>
+          <label>What should the video explain?</label>
+          <textarea id="c-prompt" rows="3" placeholder="e.g. Why Costco sells hot dogs for $1.50 (and makes money)"></textarea>
+          <div class="row">
+            <div><label>Slug (folder name)</label><input id="c-slug" placeholder="auto from prompt"></div>
+            <div><label>Length (s)</label><input id="c-duration" type="number" min="15" max="180" value="50"></div>
+          </div>
+          <div class="row">
+            <div><label>Style</label><select id="c-style"></select></div>
+            <div><label>Aspect</label><select id="c-aspect"></select></div>
+            <div><label>Music mood</label><select id="c-mood"></select></div>
+          </div>
+          <label>Platforms</label>
+          <div id="c-platforms" class="checks"></div>
+          <div class="actions">
+            <button id="c-write" class="primary">Write script</button>
+            <label class="inline"><input type="checkbox" id="c-overwrite"> overwrite existing</label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Projects</h2>
+          <p class="muted">Pick a project to edit its script or render it.</p>
+          <div id="projects" class="list"></div>
+        </div>
+      </div>
+
+      <div class="card" id="editor-card" hidden>
+        <div class="row between">
+          <h2 id="editor-title">Script</h2>
+          <div class="actions">
+            <label class="inline"><input type="checkbox" id="e-safe"> safe-zone overlay</label>
+            <label class="inline"><input type="checkbox" id="e-strict"> stop if QA fails</label>
+            <button id="e-save">Save</button>
+            <button id="e-render" class="primary">Render</button>
+          </div>
+        </div>
+        <div id="facts" class="warn" hidden></div>
+        <div id="scenes" class="scenes"></div>
+        <details><summary>Raw script.json</summary><textarea id="e-json" rows="18" class="mono"></textarea></details>
+      </div>
+    </section>
+
+    <!-- IDEAS -->
+    <section id="tab-ideas" class="tab">
+      <div class="card">
+        <h2>Learn from reference videos</h2>
+        <p class="muted">Paste YouTube / Shorts / Reels / TikTok links (one per line). The analyzer measures pacing, hook (said vs shown) and style into a blueprint, then proposes 5 ideas. Nothing is generated until you approve.</p>
+        <textarea id="i-urls" rows="3" placeholder="https://www.youtube.com/shorts/..."></textarea>
+        <div class="row">
+          <div><label>Style name</label><input id="i-style" placeholder="my_style"></div>
+          <div><label>Mode</label><select id="i-mode"><option value="hook">hook (first 20 s)</option><option value="condensed" selected>condensed</option><option value="forensic">forensic</option></select></div>
+          <div><label>Topic hint (optional)</label><input id="i-topic" placeholder="e.g. personal finance"></div>
+        </div>
+        <div class="actions">
+          <button id="i-analyze" class="primary">Analyze + propose ideas</button>
+          <label class="inline"><input type="checkbox" id="i-large"> allow long videos (&gt;15 contact sheets)</label>
+        </div>
+      </div>
+      <div id="runs"></div>
+    </section>
+
+    <!-- LIBRARY -->
+    <section id="tab-library" class="tab">
+      <div id="library"></div>
+    </section>
+
+    <!-- SCHEDULE -->
+    <section id="tab-schedule" class="tab">
+      <div class="grid2">
+        <div class="card">
+          <div class="row between"><h2>Scheduler</h2><label class="switch"><input type="checkbox" id="s-daemon"><span>daemon running</span></label></div>
+          <div id="caps" class="caps"></div>
+          <h3>Add job</h3>
+          <div class="row">
+            <div><label>Project</label><select id="s-project"></select></div>
+            <div><label>Type</label><select id="s-type"><option>generate_and_upload</option><option>generate_only</option><option>upload_only</option></select></div>
+          </div>
+          <div class="row">
+            <div><label>Generate at</label><input id="s-gen" type="datetime-local"></div>
+            <div><label>Upload at</label><input id="s-up" type="datetime-local"></div>
+          </div>
+          <div class="row">
+            <div><label>Platforms</label><div id="s-platforms" class="checks"></div></div>
+            <div><label>YouTube visibility</label><select id="s-vis"><option value="">default</option><option>unlisted</option><option>private</option><option>public</option></select></div>
+          </div>
+          <div class="actions"><button id="s-add" class="primary">Add to schedule</button></div>
+          <h3>Defaults</h3>
+          <div class="row">
+            <div><label>Timezone</label><input id="s-tz"></div>
+            <div><label>Instagram / day</label><input id="s-capig" type="number" min="0" max="10"></div>
+            <div><label>YouTube / day</label><input id="s-capyt" type="number" min="0" max="50"></div>
+            <div><label>TikTok / day</label><input id="s-captt" type="number" min="0" max="20"></div>
+          </div>
+          <div class="actions"><button id="s-save-defaults">Save defaults</button></div>
+        </div>
+        <div class="card">
+          <h2>Queue</h2>
+          <div id="s-jobs" class="list"></div>
+          <h3>Recent events</h3>
+          <div id="s-events" class="events mono"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="tab-settings" class="tab">
+      <div class="grid2">
+        <div class="card">
+          <h2>Language model</h2>
+          <p class="muted">Writes ideas, scripts, titles, hashtags and reads reference frames. Default: Gemini free tier.</p>
+          <div class="row">
+            <div><label>Provider</label><select id="l-provider"><option value="gemini">Gemini (default)</option><option value="ollama">Ollama (offline)</option><option value="openai">OpenAI-compatible</option></select></div>
+            <div><label>Gemini model</label><input id="l-gemini-model"></div>
+          </div>
+          <label>Gemini API key <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener">get one</a></label>
+          <input id="k-GEMINI_API_KEY" type="password" autocomplete="off">
+          <div class="row">
+            <div><label>Ollama host</label><input id="k-OLLAMA_HOST" placeholder="http://127.0.0.1:11434"></div>
+            <div><label>Ollama model</label><input id="l-ollama-model"></div>
+          </div>
+          <div class="row">
+            <div><label>OpenAI-compatible base URL</label><input id="k-OPENAI_BASE_URL"></div>
+            <div><label>Model</label><input id="l-openai-model"></div>
+          </div>
+          <label>OpenAI-compatible API key</label><input id="k-OPENAI_API_KEY" type="password" autocomplete="off">
+          <div class="actions"><button id="l-save" class="primary">Save</button><button id="l-test">Test connection</button><button id="l-models">List Gemini models</button></div>
+
+          <h2>Video defaults</h2>
+          <div class="row">
+            <div><label>Channel niche</label><input id="d-niche" placeholder="e.g. business case studies"></div>
+            <div><label>Language</label><input id="d-language"></div>
+          </div>
+          <div class="row">
+            <div><label>Voice engine</label><select id="d-voice_engine"><option>edge-tts</option><option>kokoro</option></select></div>
+            <div><label>Voice</label><input id="d-voice"></div>
+            <div><label>Rate</label><input id="d-rate"></div>
+          </div>
+          <div class="row">
+            <div><label>Style</label><select id="d-style"></select></div>
+            <div><label>Aspect</label><select id="d-aspect_ratio"></select></div>
+            <div><label>Mood</label><select id="d-music_mood"></select></div>
+            <div><label>Length (s)</label><input id="d-target_duration_sec" type="number"></div>
+          </div>
+          <label class="inline"><input type="checkbox" id="d-tracking"> Clipper speaker tracking (slower; for podcasts/interviews)</label>
+          <div class="actions"><button id="d-save" class="primary">Save defaults</button></div>
+        </div>
+
+        <div class="card">
+          <h2>Publishing</h2>
+          <p class="muted"><b>cookie</b> = browser login via social-auto-upload (works now). <b>api</b> = official API (needs app approval; see notes).</p>
+          <div id="pub"></div>
+          <details>
+            <summary>Official API credentials</summary>
+            <p class="warn">YouTube API uploads stay PRIVATE until Google audits your project (about 6 uploads/day quota). Instagram needs a Business/Creator account + Meta app. TikTok unaudited apps post SELF_ONLY.</p>
+            <label>YouTube OAuth client (Desktop app JSON)</label>
+            <div class="row"><input id="yt-file" type="file" accept=".json"><button id="yt-upload">Upload</button><button id="yt-connect">Connect YouTube API</button></div>
+            <div class="row">
+              <div><label>Instagram user ID</label><input id="k-INSTAGRAM_USER_ID"></div>
+              <div><label>Instagram access token</label><input id="k-INSTAGRAM_ACCESS_TOKEN" type="password" autocomplete="off"></div>
+            </div>
+            <label>TikTok access token</label><input id="k-TIKTOK_ACCESS_TOKEN" type="password" autocomplete="off">
+            <div class="actions"><button id="api-save">Save API credentials</button></div>
+            <div id="api-status" class="muted mono"></div>
+          </details>
+
+          <h2>System</h2>
+          <div class="actions"><button id="h-doctor" class="primary">System health (doctor.py)</button><button id="h-smoke">Run smoke test</button></div>
+          <p class="muted">Results open in the log panel below.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <aside id="log-panel" class="collapsed">
+    <div class="log-head">
+      <span id="log-title">Jobs</span>
+      <select id="log-job"></select>
+      <button id="log-cancel" title="Cancel the selected job">Cancel</button>
+      <button id="log-toggle">▲</button>
+    </div>
+    <pre id="log" class="mono"></pre>
+  </aside>
+  <div id="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
