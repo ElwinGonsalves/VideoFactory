@@ -124,7 +124,27 @@
 
     <!-- BATCH -->
     <section id="tab-batch" class="tab">
-      <div class="card"><h2>Batch</h2><p class="muted">Upload a spreadsheet to queue many videos at once.</p></div>
+      <div class="card">
+        <h2>Batch</h2>
+        <p class="muted">Queue many videos from a spreadsheet. They render strictly one at a time (6 GB GPU), and rows with <code>auto_publish</code> are added to the Schedule with the spacing you choose.</p>
+        <div class="row">
+          <div><label>Excel or CSV file</label><input id="b-file" type="file" accept=".xlsx,.csv"></div>
+          <div><label>or public Google Sheets link</label><input id="b-url" placeholder="https://docs.google.com/spreadsheets/d/..."></div>
+          <div style="align-self:end"><button id="b-load-url">Load sheet</button></div>
+        </div>
+        <div class="actions"><a id="b-sample" href="#" download><button type="button">Download Sample Excel</button></a>
+          <span class="muted s">Columns: input_mode, title, content, style, aspect_ratio, music_mood, voice, auto_publish, platforms, schedule_at</span></div>
+      </div>
+      <div class="card">
+        <div class="row between"><h3>Preview</h3><span id="b-summary" class="muted"></span></div>
+        <div id="b-table" class="tablewrap"><p class="muted">Load a file to see a validated preview.</p></div>
+        <div class="row">
+          <div><label>Relative upload interval</label><select id="b-interval"><option value="30m">30 min</option><option value="45m">45 min</option><option value="1h" selected>1 hour</option><option value="2h">2 hours</option><option value="4h">4 hours</option><option value="custom">Custom</option></select></div>
+          <div id="b-custom-wrap" hidden><label>Custom (e.g. 90m, 1.5h)</label><input id="b-custom" placeholder="90m"></div>
+          <div><label>First upload (optional)</label><input id="b-start" type="datetime-local"></div>
+        </div>
+        <div class="actions"><button id="b-run" class="primary" disabled>Start batch</button></div>
+      </div>
     </section>
 
     <!-- LIBRARY -->

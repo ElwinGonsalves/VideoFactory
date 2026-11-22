@@ -285,6 +285,34 @@ $('#i-analyze').onclick = () => act(async () => {
 });
 $('#i-sync').onclick = () => act(async () => watch(await api('/api/analytics/sync', {method: 'POST'}), 'Syncing analytics', () => loaders.ideas()));
 
+// ---------------------------------------------------------------- BATCH
+let batchRaw = null;
+loaders.batch = async () => { $('#b-sample').href = `/api/batch/sample?t=${encodeURIComponent(T)}`; };
+function showBatch(res) {
+  batchRaw = res.raw;
+  const bad = res.results.filter((r) => !r.ok).length;
+  $('#b-table').innerHTML = `<table class="tbl"><thead><tr><th>#</th><th>status</th>${res.columns.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${
+    res.results.map((r) => `<tr class="${r.ok ? '' : 'badrow'}"><td>${r.row}</td><td>${r.ok ? '<span class="badge ok">ok</span>' : `<span class="badge bad" title="${esc(r.errors.join('; '))}">error</span>`}</td>${
+      res.columns.map((c) => `<td>${esc(String(r.data?.[c] ?? '').slice(0, 60))}</td>`).join('')}</tr>${r.ok ? '' : `<tr class="badrow"><td></td><td colspan="${res.columns.length + 1}">${esc(r.errors.join(' · '))}</td></tr>`}`).join('')}</tbody></table>`;
+  $('#b-summary').textContent = `${res.results.length} row(s), ${bad} with errors.`;
+  $('#b-run').disabled = bad > 0 || !res.results.length;
+}
+$('#b-interval').onchange = () => { $('#b-custom-wrap').hidden = $('#b-interval').value !== 'custom'; };
+$('#b-file').onchange = () => act(async () => {
+  const f = $('#b-file').files[0]; if (!f) return;
+  const fd = new FormData(); fd.append('file', f); showBatch(await api('/api/batch/preview-file', {method: 'POST', body: fd}));
+});
+$('#b-load-url').onclick = () => act(async () => {
+  const url = $('#b-url').value.trim(); if (!url) throw new Error('Paste a Google Sheets link first');
+  showBatch(await api('/api/batch/preview-url', {method: 'POST', body: {url}}));
+});
+$('#b-run').onclick = () => act(async () => {
+  const sel = $('#b-interval').value; const interval = sel === 'custom' ? $('#b-custom').value.trim() : sel;
+  const start = $('#b-start').value ? `${$('#b-start').value}:00` : '';
+  const job = await api('/api/batch/run', {method: 'POST', body: {raw: batchRaw, interval, start}});
+  watch(job, 'Batch started: one video at a time', () => toast('Batch finished: see Library'));
+});
+
 // ---------------------------------------------------------------- LIBRARY
 loaders.library = async () => {
   const items = await api('/api/library');

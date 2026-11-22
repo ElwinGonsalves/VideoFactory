@@ -30,7 +30,7 @@ import yaml  # noqa: E402
 from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile  # noqa: E402
 from fastapi.exceptions import RequestValidationError  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response  # noqa: E402
 
 from common import OUTPUT, PROJECTS, ROOT, read_json, settings, write_json  # noqa: E402
 from llm.tasks import VISUAL_TYPES  # noqa: E402
@@ -448,6 +448,90 @@ def approve(run: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
 
 
 # ------------------------------------------------------------------ Library
+# ------------------------------------------------------------------ Batch
+def _batch_results(raw: list[dict[str, str]]) -> list[dict[str, Any]]:
+    from batch import sheet
+
+    tz = _schedule_raw().get("defaults", {}).get("timezone", "Asia/Kolkata")
+    return sheet.validate_rows(raw, tz)
+
+
+@app.get("/api/batch/sample")
+def batch_sample() -> Response:
+    from batch import sheet
+
+    return Response(
+        sheet.sample_xlsx(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="video-factory-batch-sample.xlsx"'},
+    )
+
+
+@app.post("/api/batch/preview-file")
+async def batch_preview_file(file: UploadFile = File(...)) -> dict[str, Any]:
+    from batch import sheet
+
+    raw = await file.read()
+    if len(raw) > 5_000_000:
+        raise HTTPException(413, "spreadsheet is larger than 5 MB")
+    try:
+        rows = sheet.read_upload(file.filename or "", raw)
+    except Exception as exc:  # noqa: BLE001 - corrupt xlsx raises many types
+        raise HTTPException(400, f"could not read the spreadsheet: {str(exc)[:160]}") from exc
+    return {"raw": rows, "results": _batch_results(rows), "columns": sheet.COLUMNS}
+
+
+@app.post("/api/batch/preview-url")
+def batch_preview_url(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    from batch import sheet
+
+    try:
+        rows = sheet.fetch_google_sheet(str(body.get("url", "")))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, f"could not download the sheet: {str(exc)[:160]}") from exc
+    return {"raw": rows, "results": _batch_results(rows), "columns": sheet.COLUMNS}
+
+
+@app.post("/api/batch/run")
+def batch_run(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Validate again on the server, compute upload times, then run ONE job that renders rows one by one."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from batch import sheet
+
+    results = [r for r in _batch_results(body.get("raw") or []) if r.get("data")]
+    if not results or not all(r["ok"] for r in results):
+        raise HTTPException(400, "fix the rows marked in red first")
+    try:
+        step = sheet.parse_interval(str(body.get("interval", "1h")))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    tz = ZoneInfo(_schedule_raw().get("defaults", {}).get("timezone", "Asia/Kolkata"))
+    start = datetime.now(tz)
+    if body.get("start"):
+        try:
+            start = datetime.fromisoformat(str(body["start"]))
+            start = start if start.tzinfo else start.replace(tzinfo=tz)
+        except ValueError as exc:
+            raise HTTPException(400, "first upload time is not a valid date/time") from exc
+    times = sheet.upload_times(results, start, step)
+    spec = {
+        "rows": [
+            {"data": r["data"], "upload_at": t.isoformat() if t else None} for r, t in zip(results, times, strict=True)
+        ]
+    }
+    inbox = ROOT / "ui" / "logs" / "inputs"
+    inbox.mkdir(parents=True, exist_ok=True)
+    path = inbox / f"batch-{secrets.token_hex(5)}.json"
+    write_json(path, spec)
+    return jobs.submit(
+        "batch", f"batch of {len(results)} video(s), one at a time", ["batch/run.py", str(path)]
+    ).public()
+
+
 # ------------------------------------------------------------------ analytics
 @app.get("/api/analytics")
 def analytics() -> dict[str, Any]:

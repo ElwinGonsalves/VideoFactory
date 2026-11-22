@@ -85,3 +85,4 @@ a { color: var(--accent2); }
 .segmented{display:flex;gap:0;margin-bottom:12px}.segmented button{flex:1;border-radius:0;padding:10px}.segmented button:first-child{border-radius:8px 0 0 8px}.segmented button:last-child{border-radius:0 8px 8px 0}.segmented button.active{background:var(--accent,#ea580c);color:#fff}.segmented small{opacity:.8;font-weight:400}textarea.auto{resize:none;overflow:hidden}
 
 .idea.dismissed{opacity:.45}.idea input,.idea textarea{margin:2px 0}
+.tablewrap{overflow:auto;max-height:340px}.tbl{border-collapse:collapse;width:100%;font-size:12px}.tbl th,.tbl td{border-bottom:1px solid var(--line);padding:4px 8px;text-align:left;white-space:nowrap}.badrow{background:rgba(239,68,68,.12)}

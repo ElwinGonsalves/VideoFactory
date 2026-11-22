@@ -1,6 +1,6 @@
 """Background jobs for the UI: each job is a subprocess with a log file the browser can tail.
 
-Heavy jobs (render, analyze, approve, smoke) share one worker so the GPU, RAM and Chrome are
+Heavy jobs (render, analyze, approve, smoke, batch) share one worker so the GPU, RAM and Chrome are
 never oversubscribed; light jobs (doctor, publish, llm, login) run immediately.
 """
 
@@ -20,7 +20,7 @@ from typing import Any
 from common import ROOT
 
 LOG_DIR = ROOT / "ui" / "logs"
-HEAVY = {"render", "analyze", "approve", "smoke"}
+HEAVY = {"render", "analyze", "approve", "smoke", "batch"}
 PY = sys.executable
 
 
