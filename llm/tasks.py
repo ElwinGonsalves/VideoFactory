@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from llm.providers import GroundingUnavailable, LLMError, Provider, get_provider
+from llm.usage import tracked
 from pipeline.router import ROUTES
 from pipeline.visuals import ICON_NAMES, STICK_POSES
 from prompts.script_templates import REGISTRY
@@ -377,6 +378,7 @@ VISUAL_SCHEMA: dict[str, Any] = {
 
 
 # --------------------------------------------------------------------------- tasks
+@tracked("reference")
 def read_reference_frames(
     blueprint: dict[str, Any], sheets: list[Path], said_first_3s: str, provider: Provider | None = None
 ) -> dict[str, Any]:
@@ -453,6 +455,7 @@ def history_block(history: list[dict[str, str]], top: list[dict[str, Any]]) -> s
     return "\n".join(lines) or "No previous videos."
 
 
+@tracked("ideas")
 def generate_ideas(
     *,
     blueprint: dict[str, Any] | None,
@@ -537,6 +540,7 @@ def _research_block(research: dict[str, Any] | None) -> str:
     )
 
 
+@tracked("script")
 def write_script(
     *,
     brief: str,
@@ -610,6 +614,7 @@ def split_narration(text: str, *, min_words: int = 8, max_words: int = 20) -> li
     return scenes
 
 
+@tracked("script_visuals")
 def script_from_text(
     text: str,
     *,
@@ -712,6 +717,7 @@ def _verify_claims(claims: list[dict[str, Any]], provider: Provider | None) -> t
     return research, "grounded with Google Search"
 
 
+@tracked("metadata")
 def write_metadata(
     script: dict[str, Any], platform_targets: list[str], provider: Provider | None = None
 ) -> dict[str, Any]:

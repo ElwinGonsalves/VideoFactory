@@ -480,37 +480,71 @@ $('#s-awake').onchange = savePre; $('#s-safe').onchange = savePre;
 
 // ---------------------------------------------------------------- SETTINGS
 let SETTINGS = null;
+const PLATFORM_FIELDS = {
+  youtube: [['YOUTUBE_CLIENT_ID', 'Client ID'], ['YOUTUBE_CLIENT_SECRET', 'Client Secret'], ['YOUTUBE_ACCESS_TOKEN', 'Access Token']],
+  instagram: [['INSTAGRAM_CLIENT_ID', 'Client ID (app id)'], ['INSTAGRAM_CLIENT_SECRET', 'Client Secret'], ['INSTAGRAM_USER_ID', 'Instagram user ID'], ['INSTAGRAM_ACCESS_TOKEN', 'Access Token']],
+  tiktok: [['TIKTOK_CLIENT_KEY', 'Client Key'], ['TIKTOK_CLIENT_SECRET', 'Client Secret'], ['TIKTOK_ACCESS_TOKEN', 'Access Token']],
+};
+const maskedPh = (env, k) => (env[k]?.set ? (env[k].value || 'set') : 'not set');
 loaders.settings = async () => {
   OPTS = OPTS || (await api('/api/options'));
   SETTINGS = await api('/api/settings');
   const p = SETTINGS.prefs, env = SETTINGS.env;
   $('#l-provider').value = p.llm.provider; $('#l-gemini-model').value = p.llm.gemini_model; $('#l-ollama-model').value = p.llm.ollama_model; $('#l-openai-model').value = p.llm.openai_model;
-  for (const k of Object.keys(env)) { const el = $(`#k-${k}`); if (el) { el.value = ''; el.placeholder = env[k].set ? (env[k].value || 'set') : 'not set'; } }
+  for (const k of Object.keys(env)) { const el = $(`#k-${k}`); if (el) { el.value = ''; el.placeholder = maskedPh(env, k); } }
   const d = p.defaults;
   ['niche', 'language', 'voice', 'rate', 'target_duration_sec'].forEach((k) => ($(`#d-${k}`).value = d[k] ?? ''));
   $('#d-voice_engine').value = d.voice_engine;
   opts($('#d-style'), OPTS.styles, d.style); opts($('#d-aspect_ratio'), OPTS.aspects, d.aspect_ratio); opts($('#d-music_mood'), OPTS.moods, d.music_mood);
-  $('#d-tracking').checked = !!p.clipper.speaker_tracking;
   const cookies = SETTINGS.cookie_accounts;
   $('#pub').innerHTML = ['youtube', 'instagram', 'tiktok'].map((pl) => {
-    const c = p.publish[pl]; const has = cookies.includes(`${pl}_${c.account}`);
-    return `<div class="pub-row"><b>${pl}</b>
-      <select data-pm="${pl}"><option ${c.method === 'cookie' ? 'selected' : ''}>cookie</option><option ${c.method === 'api' ? 'selected' : ''}>api</option></select>
-      <input data-pa="${pl}" value="${esc(c.account)}" title="cookie account name">
-      <span class="badge ${has ? 'ok' : 'warn'}">${has ? 'cookie saved' : 'not logged in'}</span>
-      <span><button class="small" data-login="${pl}">Login</button> <button class="small" data-check="${pl}">Check</button></span></div>`;
-  }).join('') + `<div class="actions"><button id="pub-save">Save publishing settings</button></div>`;
-  $('#api-status').textContent = JSON.stringify(SETTINGS.api_status);
-  $$('[data-login]').forEach((b) => (b.onclick = () => act(async () => watch(await api('/api/settings/login', {method: 'POST', body: {platform: b.dataset.login, account: $(`[data-pa=${b.dataset.login}]`).value}}), 'Login: a browser window opens; sign in, then close it', () => loaders.settings()))));
-  $$('[data-check]').forEach((b) => (b.onclick = () => act(async () => watch(await api('/api/settings/check', {method: 'POST', body: {platform: b.dataset.check, account: $(`[data-pa=${b.dataset.check}]`).value}}), 'Cookie check'))));
+    const c = p.publish[pl]; const api_ = c.method === 'api'; const has = cookies.includes(`${pl}_${c.account}`);
+    return `<div class="plat-card" data-pl="${pl}">
+      <div class="row between"><h3>${pl[0].toUpperCase() + pl.slice(1)}</h3>
+        <span class="badge ${api_ ? 'warn' : has ? 'ok' : 'warn'}">${api_ ? 'official API' : has ? 'cookie saved' : 'not logged in'}</span></div>
+      <div class="row"><div><label>Account label</label><input data-pa value="${esc(c.account)}" title="name of the saved login"></div>
+        <div><label>Login method</label><div class="segmented"><button data-pm="cookie" class="${api_ ? '' : 'active'}">Cookie Login</button><button data-pm="api" class="${api_ ? 'active' : ''}">Official API</button></div></div></div>
+      <div class="actions cookie-box" ${api_ ? 'hidden' : ''}><button class="small primary" data-login>Connect / Refresh Login</button><button class="small" data-check>Check Session</button></div>
+      <div class="api-box" ${api_ ? '' : 'hidden'}>
+        <div class="row">${PLATFORM_FIELDS[pl].map(([k, label]) => `<div><label>${esc(label)}</label><input data-key="${k}" type="password" autocomplete="off" placeholder="${esc(maskedPh(env, k))}"></div>`).join('')}</div>
+        ${pl === 'youtube' ? `<div class="row"><div><label>client_secret.json (Desktop app)</label><input data-yt-file type="file" accept=".json"></div><div style="align-self:end"><button class="small" data-yt-upload>Upload</button> <button class="small" data-yt-connect>Connect YouTube API</button></div></div>` : ''}
+        <div class="actions"><button class="small primary" data-save-api>Save</button><button class="small" data-test>Test Connection</button></div>
+        <div class="muted s">${pl === 'youtube' ? 'Uploads stay PRIVATE until Google audits your project (about 6 per day).' : pl === 'instagram' ? 'Needs a Business/Creator account and a Meta app.' : 'Unaudited TikTok apps can only post SELF_ONLY.'}</div>
+      </div></div>`;
+  }).join('') + '<div class="actions"><button id="pub-save">Save login methods</button></div>';
+  $$('#pub .plat-card').forEach((cardEl) => {
+    const pl = cardEl.dataset.pl;
+    $$('[data-pm]', cardEl).forEach((b) => (b.onclick = () => {
+      $$('[data-pm]', cardEl).forEach((x) => x.classList.toggle('active', x === b));
+      $('.cookie-box', cardEl).hidden = b.dataset.pm !== 'cookie'; $('.api-box', cardEl).hidden = b.dataset.pm !== 'api';
+    }));
+    const account = () => $('[data-pa]', cardEl).value.trim() || 'main';
+    $('[data-login]', cardEl).onclick = () => act(async () => watch(await api('/api/settings/login', {method: 'POST', body: {platform: pl, account: account()}}), 'Login: a browser window opens; sign in, then close it', () => loaders.settings()));
+    $('[data-check]', cardEl).onclick = () => act(async () => watch(await api('/api/settings/check', {method: 'POST', body: {platform: pl, account: account()}}), 'Session check', () => loaders.settings()));
+    $('[data-save-api]', cardEl).onclick = () => act(async () => { await saveSecrets(PLATFORM_FIELDS[pl].map(([k]) => k), cardEl); toast('Saved to the local .env'); loaders.settings(); });
+    $('[data-test]', cardEl).onclick = () => act(async () => watch(await api('/api/settings/test-platform', {method: 'POST', body: {platform: pl}}), `Testing ${pl} API`));
+    if (pl === 'youtube') {
+      $('[data-yt-upload]', cardEl).onclick = () => act(async () => {
+        const f = $('[data-yt-file]', cardEl).files[0]; if (!f) throw new Error('Choose the client_secret.json file first');
+        const fd = new FormData(); fd.append('file', f); await api('/api/settings/youtube-client', {method: 'POST', body: fd}); toast('client_secret.json saved'); loaders.settings();
+      });
+      $('[data-yt-connect]', cardEl).onclick = () => act(async () => watch(await api('/api/settings/youtube-connect', {method: 'POST'}), 'YouTube consent: a browser opens', () => loaders.settings()));
+    }
+  });
   $('#pub-save').onclick = () => act(async () => {
     const publish = {};
-    ['youtube', 'instagram', 'tiktok'].forEach((pl) => (publish[pl] = {method: $(`[data-pm=${pl}]`).value, account: $(`[data-pa=${pl}]`).value.trim() || 'main'}));
-    await api('/api/settings/prefs', {method: 'PUT', body: {publish}}); toast('Publishing settings saved'); loaders.settings();
+    $$('#pub .plat-card').forEach((c) => (publish[c.dataset.pl] = {method: $('[data-pm].active', c).dataset.pm, account: $('[data-pa]', c).value.trim() || 'main'}));
+    await api('/api/settings/prefs', {method: 'PUT', body: {publish}}); toast('Login methods saved'); loaders.settings();
   });
+  $('#a-channel').value = p.analytics?.channel_url || ''; $('#a-weekly').checked = !!p.analytics?.weekly;
+  const u = await api('/api/usage');
+  $('#usage').innerHTML = `This month (${esc(u.month)}): <b>${u.calls}</b> calls, ${u.input_tokens.toLocaleString()} input + ${u.output_tokens.toLocaleString()} output tokens, estimated <b>Rs ${u.spend_inr.toFixed(2)}</b> of Rs ${u.limit_inr} limit.${u.tier === 'free' ? ' Free tier: no cost, limit not enforced.' : ''}`;
+  $('#u-tier').value = u.tier; $('#u-limit').value = u.limit_inr; $('#u-rate').value = u.usd_inr;
+  const price = u.prices[p.llm.gemini_model] || Object.values(u.prices)[0] || {input: 0, output: 0};
+  $('#u-pin').value = price.input; $('#u-pout').value = price.output;
 };
-async function saveSecrets(keys) {
-  const body = {}; keys.forEach((k) => { const v = $(`#k-${k}`).value.trim(); if (v) body[k] = v; });
+async function saveSecrets(keys, scope = document) {
+  const body = {}; keys.forEach((k) => { const el = $(`#k-${k}`, scope) || $(`[data-key=${k}]`, scope); const v = el ? el.value.trim() : ''; if (v) body[k] = v; });
   if (Object.keys(body).length) await api('/api/settings/secrets', {method: 'PUT', body});
 }
 $('#l-save').onclick = () => act(async () => {
@@ -523,15 +557,17 @@ $('#l-models').onclick = () => act(async () => watch(await api('/api/settings/ge
 $('#d-save').onclick = () => act(async () => {
   const defaults = {}; ['niche', 'language', 'voice', 'rate'].forEach((k) => (defaults[k] = $(`#d-${k}`).value.trim()));
   Object.assign(defaults, {voice_engine: $('#d-voice_engine').value, style: $('#d-style').value, aspect_ratio: $('#d-aspect_ratio').value, music_mood: $('#d-music_mood').value, target_duration_sec: +$('#d-target_duration_sec').value || 50});
-  await api('/api/settings/prefs', {method: 'PUT', body: {defaults, clipper: {speaker_tracking: $('#d-tracking').checked}}});
+  await api('/api/settings/prefs', {method: 'PUT', body: {defaults}});
   OPTS = null; toast('Defaults saved');
 });
-$('#api-save').onclick = () => act(async () => { await saveSecrets(['INSTAGRAM_USER_ID', 'INSTAGRAM_ACCESS_TOKEN', 'TIKTOK_ACCESS_TOKEN']); toast('API credentials saved'); loaders.settings(); });
-$('#yt-upload').onclick = () => act(async () => {
-  const f = $('#yt-file').files[0]; if (!f) throw new Error('Choose the client JSON first');
-  const fd = new FormData(); fd.append('file', f); await api('/api/settings/youtube-client', {method: 'POST', body: fd}); toast('Client file saved'); loaders.settings();
+$('#n-save').onclick = () => act(async () => { await saveSecrets(['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'DISCORD_WEBHOOK_URL']); toast('Notification settings saved'); loaders.settings(); });
+$('#n-test').onclick = () => act(async () => { const r = await api('/api/settings/test-notify', {method: 'POST'}); toast(`Test sent: ${Object.entries(r.results).map(([k, v]) => `${k} ${v}`).join(', ')}`); });
+$('#u-save').onclick = () => act(async () => {
+  const model = $('#l-gemini-model').value.trim();
+  await api('/api/settings/prefs', {method: 'PUT', body: {llm: {gemini_tier: $('#u-tier').value, spend_limit_inr: +$('#u-limit').value, usd_inr: +$('#u-rate').value, prices: {[model]: {input: +$('#u-pin').value, output: +$('#u-pout').value}}}}});
+  toast('Spend settings saved'); loaders.settings();
 });
-$('#yt-connect').onclick = () => act(async () => watch(await api('/api/settings/youtube-connect', {method: 'POST'}), 'YouTube consent: a browser opens', () => loaders.settings()));
+$('#a-save').onclick = () => act(async () => { await api('/api/settings/prefs', {method: 'PUT', body: {analytics: {channel_url: $('#a-channel').value.trim(), weekly: $('#a-weekly').checked}}}); toast('Analytics settings saved'); });
 $('#h-doctor').onclick = () => act(async () => watch(await api('/api/health', {method: 'POST'}), 'System health'));
 $('#h-smoke').onclick = () => act(async () => watch(await api('/api/smoke', {method: 'POST'}), 'Smoke test (about 2 minutes)'));
 

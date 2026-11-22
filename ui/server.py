@@ -1048,7 +1048,7 @@ def get_settings() -> dict[str, Any]:
 
 @app.put("/api/settings/prefs")
 def put_prefs(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
-    allowed = {"llm", "defaults", "publish", "clipper"}
+    allowed = {"llm", "defaults", "publish", "analytics"}
     return settings.save_prefs({k: v for k, v in body.items() if k in allowed})
 
 
@@ -1075,6 +1075,33 @@ async def upload_youtube_client(file: UploadFile = File(...)) -> dict[str, Any]:
     settings.SECRETS_DIR.mkdir(parents=True, exist_ok=True)
     (settings.SECRETS_DIR / "youtube_client_secret.json").write_bytes(raw)
     return {"ok": True}
+
+
+@app.get("/api/usage")
+def llm_usage() -> dict[str, Any]:
+    from llm import usage
+
+    return usage.summary()
+
+
+@app.post("/api/settings/test-notify")
+def test_notify() -> dict[str, Any]:
+    from common import notify
+
+    if not any(notify.configured().values()):
+        raise HTTPException(400, "add a Telegram bot token + chat id, or a Discord webhook URL, and save first")
+    return {
+        "results": notify.send("video-factory: test message", ["Notifications are working."], {"UI": notify.UI_URL})
+    }
+
+
+@app.post("/api/settings/test-platform")
+def test_platform(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    platform = body.get("platform")
+    if platform not in ("youtube", "instagram", "tiktok"):
+        raise HTTPException(400, "platform must be youtube, instagram or tiktok")
+    code = f"from publisher.official_apis import test_connection; print(test_connection({platform!r}))"
+    return jobs.submit("login", f"test {platform} API connection", ["-c", code]).public()
 
 
 @app.post("/api/settings/test-llm")

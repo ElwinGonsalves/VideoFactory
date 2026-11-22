@@ -50,6 +50,7 @@ SCHEDULE = HERE / "schedule.yaml"
 STATE = HERE / "state.sqlite"
 LOGS = HERE / "logs"
 MAX_ATTEMPTS = 5
+NOTIFY_KINDS = {"generate_failed", "upload_failed", "platform_paused", "upload_held"}
 BACKOFF_MIN = 5
 JOB_TYPES = ("generate_only", "upload_only", "generate_and_upload")
 DEFAULTS = {
@@ -121,6 +122,17 @@ def event(conn: sqlite3.Connection, job_id: str | None, kind: str, detail: str =
     # (event -> generate()), locking state.sqlite for the UI and every other process.
     conn.commit()
     log.info(json.dumps({"job": job_id, "event": kind, "detail": detail[:500]}))
+    if kind in NOTIFY_KINDS:
+        try:
+            from common import notify
+
+            notify.send(
+                f"video-factory: {kind.replace('_', ' ')}",
+                [f"job: {job_id or '-'}", detail[:300]],
+                {"Schedule": f"{notify.UI_URL}/#schedule"},
+            )
+        except Exception:  # noqa: BLE001 - never let a notification break the scheduler
+            log.exception("notification failed")
 
 
 def load_schedule(path: Path = SCHEDULE) -> dict[str, Any]:

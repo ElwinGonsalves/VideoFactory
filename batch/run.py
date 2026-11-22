@@ -16,9 +16,10 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from common import PROJECTS, db, paths, read_json, settings, write_json  # noqa: E402
+from common import PROJECTS, db, notify, paths, read_json, settings, write_json  # noqa: E402
 from common.slugs import title_slug  # noqa: E402
 from llm.tasks import script_from_text, write_script  # noqa: E402
+from llm.usage import SpendLimitReached  # noqa: E402
 from prompts.script_templates import default_aspect_for  # noqa: E402
 
 
@@ -78,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     spec = read_json(Path((argv or sys.argv[1:])[0]))
     rows = spec["rows"]
     done, failed = [], []
+    stopped = ""
     for k, row in enumerate(rows, 1):
         title = row["data"].get("title") or row["data"]["content"][:40]
         print(f"[batch {k}/{len(rows)}] {title}", flush=True)
@@ -85,11 +87,25 @@ def main(argv: list[str] | None = None) -> int:
             slug = process_row(row["data"], row.get("upload_at"), produce)
             done.append(slug)
             print(f"[batch {k}/{len(rows)}] DONE {slug}", flush=True)
+        except SpendLimitReached as exc:  # stop cleanly: finished rows stay finished, the rest wait for you
+            stopped = str(exc)
+            failed.extend(r["data"].get("title") or r["data"]["content"][:40] for r in rows[k - 1 :])
+            print(f"[batch {k}/{len(rows)}] PAUSED: {exc}", flush=True)
+            break
         except Exception as exc:  # noqa: BLE001 - one bad row must not stop the others
             failed.append(title)
             print(f"[batch {k}/{len(rows)}] FAILED {title}: {exc}\n{traceback.format_exc(limit=2)}", flush=True)
     print(f"BATCH finished: {len(done)} rendered, {len(failed)} failed", flush=True)
-    return 0 if not failed else 1
+    notify.send(
+        "video-factory: batch paused (spend limit)" if stopped else "video-factory: batch finished",
+        [
+            f"{len(done)} rendered, {len(failed)} not rendered",
+            *([stopped] if stopped else []),
+            *[f"ok: {s}" for s in done[:10]],
+        ],
+        {"Library": f"{notify.UI_URL}/#library"},
+    )
+    return 3 if stopped else (0 if not failed else 1)
 
 
 if __name__ == "__main__":

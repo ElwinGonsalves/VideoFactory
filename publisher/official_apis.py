@@ -35,12 +35,25 @@ def youtube_connect() -> str:
     """One-time OAuth consent in the browser; stores a refreshable token locally."""
     from google_auth_oauthlib.flow import InstalledAppFlow
 
-    if not YT_CLIENT.exists():
+    cid, secret = settings.env("YOUTUBE_CLIENT_ID"), settings.env("YOUTUBE_CLIENT_SECRET")
+    if YT_CLIENT.exists():
+        flow = InstalledAppFlow.from_client_secrets_file(str(YT_CLIENT), YT_SCOPES)
+    elif cid and secret:  # Client ID + secret typed into Settings instead of uploading client_secret.json
+        config = {
+            "installed": {
+                "client_id": cid,
+                "client_secret": secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": ["http://localhost"],
+            }
+        }
+        flow = InstalledAppFlow.from_client_config(config, YT_SCOPES)
+    else:
         raise ApiNotConfigured(
-            f"Put your OAuth client file (Desktop app) at {YT_CLIENT}. "
+            "Upload client_secret.json (Desktop app) or enter the Client ID and Client Secret in Settings. "
             "Google Cloud Console > APIs & Services > Credentials > Create OAuth client ID > Desktop."
         )
-    flow = InstalledAppFlow.from_client_secrets_file(str(YT_CLIENT), YT_SCOPES)
     creds = flow.run_local_server(host="127.0.0.1", port=0, open_browser=True)
     YT_TOKEN.write_text(creds.to_json(), encoding="utf-8")
     return "YouTube API connected"
@@ -197,7 +210,10 @@ def tiktok_upload(video: Path, title: str, privacy_level: str = "SELF_ONLY") -> 
 def status() -> dict[str, Any]:
     """What is configured, for the Settings page (no secrets)."""
     return {
-        "youtube": {"client_file": YT_CLIENT.exists(), "connected": YT_TOKEN.exists()},
+        "youtube": {
+            "client_file": YT_CLIENT.exists() or bool(settings.env("YOUTUBE_CLIENT_ID")),
+            "connected": YT_TOKEN.exists(),
+        },
         "instagram": {
             "token": bool(settings.env("INSTAGRAM_ACCESS_TOKEN")),
             "user_id": bool(settings.env("INSTAGRAM_USER_ID")),
@@ -210,3 +226,45 @@ def configured(platform: str) -> bool:
     """True when the official-API credentials for a platform are all present."""
     s = status()[platform]
     return all(s.values()) if platform == "instagram" else bool(s.get("connected") or s.get("token"))
+
+
+def test_connection(platform: str) -> str:
+    """One cheap authenticated read per platform. Returns a sentence for the UI log; raises with the reason."""
+    if platform == "youtube":
+        from googleapiclient.discovery import build
+
+        yt = build("youtube", "v3", credentials=_youtube_creds(), cache_discovery=False)
+        items = yt.channels().list(part="snippet", mine=True).execute().get("items", [])
+        return (
+            f"YouTube API OK: channel {items[0]['snippet']['title']!r}"
+            if items
+            else "YouTube API OK (no channel on this account)"
+        )
+    if platform == "instagram":
+        token, user = settings.env("INSTAGRAM_ACCESS_TOKEN"), settings.env("INSTAGRAM_USER_ID")
+        if not token or not user:
+            raise ApiNotConfigured("Set the Instagram user ID and access token first.")
+        ver = settings.load()["publish"]["graph_api_version"]
+        r = requests.get(
+            f"https://graph.facebook.com/{ver}/{user}",
+            params={"fields": "username"},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        if not r.ok:
+            raise RuntimeError(f"Instagram answered HTTP {r.status_code}: {r.text[:160]}")
+        return f"Instagram API OK: @{r.json().get('username', '?')}"
+    if platform == "tiktok":
+        token = settings.env("TIKTOK_ACCESS_TOKEN")
+        if not token:
+            raise ApiNotConfigured("Set the TikTok access token first.")
+        r = requests.get(
+            "https://open.tiktokapis.com/v2/user/info/",
+            params={"fields": "open_id,display_name"},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        if not r.ok:
+            raise RuntimeError(f"TikTok answered HTTP {r.status_code}: {r.text[:160]}")
+        return f"TikTok API OK: {r.json().get('data', {}).get('user', {}).get('display_name', 'account')}"
+    raise ValueError(f"unknown platform {platform}")

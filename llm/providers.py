@@ -168,6 +168,9 @@ class GeminiProvider(Provider):
         return _post(f"{self.base}/models/{model}:generateContent", payload, self._headers())
 
     def _call(self, prompt: str, schema: dict | None, system: str) -> str:
+        from llm import usage
+
+        usage.check_limit()
         errors = []
         for model in [self.model, *[m for m in self.fallbacks if m != self.model]]:
             for call in (self._interactions, self._generate_content):
@@ -176,6 +179,7 @@ class GeminiProvider(Provider):
                     text = _find_text(res.json())
                     if text:
                         self.model = model  # remember the one that worked for this run
+                        usage.record("gemini", model, res.json())
                         return text
                     errors.append(f"{model}: empty response")
                     continue
@@ -207,10 +211,14 @@ class GeminiProvider(Provider):
         }
         if system:
             payload["systemInstruction"] = {"parts": [{"text": system}]}
+        from llm import usage
+
+        usage.check_limit()
         errors = []
         for model in [self.model, *[m for m in self.fallbacks if m != self.model]]:
             res = _post(f"{self.base}/models/{model}:generateContent", payload, self._headers())
             if res.ok and (text := _find_text(res.json())):
+                usage.record("gemini", model, res.json())
                 return extract_json(text)
             errors.append(f"{model}: HTTP {res.status_code} {res.text[:120]}")
         raise LLMError("Gemini vision failed. " + " | ".join(errors[-3:]))
@@ -227,7 +235,12 @@ class GeminiProvider(Provider):
         }
         if system:
             payload["systemInstruction"] = {"parts": [{"text": system}]}
+        from llm import usage
+
+        usage.check_limit()
         res = _post(f"{self.base}/models/{self.model}:generateContent", payload, self._headers(), attempts=2)
+        if res.ok:
+            usage.record("gemini", self.model, res.json())
         if not res.ok:
             raise GroundingUnavailable(f"Google Search grounding refused (HTTP {res.status_code}): {res.text[:160]}")
         body = res.json()

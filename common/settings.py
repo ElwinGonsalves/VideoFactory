@@ -24,12 +24,22 @@ SECRET_KEYS = (
     "OPENAI_API_KEY",
     "INSTAGRAM_ACCESS_TOKEN",
     "TIKTOK_ACCESS_TOKEN",
+    "YOUTUBE_CLIENT_SECRET",
+    "YOUTUBE_ACCESS_TOKEN",
+    "INSTAGRAM_CLIENT_SECRET",
+    "TIKTOK_CLIENT_SECRET",
+    "TELEGRAM_BOT_TOKEN",
+    "DISCORD_WEBHOOK_URL",
+    "YOUTUBE_CLIENT_ID",
+    "INSTAGRAM_CLIENT_ID",
+    "TIKTOK_CLIENT_KEY",
 )
 ENV_KEYS = (
     *SECRET_KEYS,
     "OLLAMA_HOST",
     "OPENAI_BASE_URL",
     "INSTAGRAM_USER_ID",
+    "TELEGRAM_CHAT_ID",
 )
 
 DEFAULTS: dict[str, Any] = {
@@ -44,6 +54,11 @@ DEFAULTS: dict[str, Any] = {
         # Google Search grounding for case studies/stats. Free-tier Gemini refuses it; scripts then fall back
         # to ungrounded writing and every numeric claim is marked unverified.
         "grounding": True,
+        # Spend guard. Free tier costs nothing; on "paid" the monthly estimate stops batches at the limit.
+        "gemini_tier": "free",  # free | paid
+        "spend_limit_inr": 100,
+        "usd_inr": 85.0,
+        "prices": {},  # {"model-prefix": {"input": usd_per_1M, "output": usd_per_1M}}, merged over llm/usage.py defaults
     },
     "defaults": {
         "aspect_ratio": "9:16",

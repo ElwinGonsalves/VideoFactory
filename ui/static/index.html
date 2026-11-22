@@ -250,28 +250,37 @@
             <div><label>Mood</label><select id="d-music_mood"></select></div>
             <div><label>Length (s)</label><input id="d-target_duration_sec" type="number"></div>
           </div>
-          <label class="inline"><input type="checkbox" id="d-tracking"> Clipper speaker tracking (slower; for podcasts/interviews)</label>
           <div class="actions"><button id="d-save" class="primary">Save defaults</button></div>
         </div>
 
         <div class="card">
-          <h2>Publishing</h2>
-          <p class="muted"><b>cookie</b> = browser login via social-auto-upload (works now). <b>api</b> = official API (needs app approval; see notes).</p>
+          <h2>Publishing accounts</h2>
+          <p class="muted">Per platform: sign in with the browser (<b>Cookie Login</b>, works today) or use the <b>Official API</b> (needs app approval). Secrets are stored only in your local, gitignored <code>.env</code> and <code>config/</code>; the page shows them masked.</p>
           <div id="pub"></div>
-          <details>
-            <summary>Official API credentials</summary>
-            <p class="warn">YouTube API uploads stay PRIVATE until Google audits your project (about 6 uploads/day quota). Instagram needs a Business/Creator account + Meta app. TikTok unaudited apps post SELF_ONLY.</p>
-            <label>YouTube OAuth client (Desktop app JSON)</label>
-            <div class="row"><input id="yt-file" type="file" accept=".json"><button id="yt-upload">Upload</button><button id="yt-connect">Connect YouTube API</button></div>
-            <div class="row">
-              <div><label>Instagram user ID</label><input id="k-INSTAGRAM_USER_ID"></div>
-              <div><label>Instagram access token</label><input id="k-INSTAGRAM_ACCESS_TOKEN" type="password" autocomplete="off"></div>
-            </div>
-            <label>TikTok access token</label><input id="k-TIKTOK_ACCESS_TOKEN" type="password" autocomplete="off">
-            <div class="actions"><button id="api-save">Save API credentials</button></div>
-            <div id="api-status" class="muted mono"></div>
-          </details>
-
+          <h2>Notifications</h2>
+          <p class="muted">Optional. A message when an overnight batch finishes or a job fails (with links).</p>
+          <div class="row">
+            <div><label>Telegram bot token</label><input id="k-TELEGRAM_BOT_TOKEN" type="password" autocomplete="off"></div>
+            <div><label>Telegram chat id</label><input id="k-TELEGRAM_CHAT_ID" autocomplete="off"></div>
+          </div>
+          <label>Discord webhook URL</label><input id="k-DISCORD_WEBHOOK_URL" type="password" autocomplete="off">
+          <div class="actions"><button id="n-save">Save</button><button id="n-test">Send test message</button></div>
+          <h2>Gemini usage and spend</h2>
+          <div id="usage" class="muted">loading...</div>
+          <div class="row">
+            <div><label>Gemini plan</label><select id="u-tier"><option value="free">Free tier (Rs 0)</option><option value="paid">Paid</option></select></div>
+            <div><label>Stop limit (Rs / month)</label><input id="u-limit" type="number" min="0" step="10"></div>
+            <div><label>USD to INR</label><input id="u-rate" type="number" min="1" step="0.5"></div>
+          </div>
+          <div class="row">
+            <div><label>Price per 1M input tokens (USD)</label><input id="u-pin" type="number" min="0" step="0.05"></div>
+            <div><label>Price per 1M output tokens (USD)</label><input id="u-pout" type="number" min="0" step="0.05"></div>
+          </div>
+          <div class="actions"><button id="u-save">Save spend settings</button></div>
+          <h2>Analytics</h2>
+          <div class="row"><div><label>YouTube channel URL (match published videos by title)</label><input id="a-channel" placeholder="https://www.youtube.com/@handle/shorts"></div></div>
+          <label class="inline"><input type="checkbox" id="a-weekly"> sync analytics weekly (Monday 09:00, needs the scheduler daemon)</label>
+          <div class="actions"><button id="a-save">Save</button></div>
           <h2>System</h2>
           <div class="actions"><button id="h-doctor" class="primary">System health (doctor.py)</button><button id="h-smoke">Run smoke test</button></div>
           <p class="muted">Results open in the log panel below.</p>
