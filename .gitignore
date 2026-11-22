@@ -71,4 +71,3 @@ config/
 ui/logs/
 # Generated assets (recreate: python scripts/bootstrap.py --assets)
 studio/public/textures/
-audio_pipeline/sfx_library/

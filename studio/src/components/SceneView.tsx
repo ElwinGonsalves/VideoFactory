@@ -4,6 +4,12 @@ import {isPortrait} from '../format';
 import type {Theme} from '../theme';
 import type {AspectRatio, Brand, Visual} from '../types';
 import {MapView} from './MapView';
+import {CounterVisual} from './visuals/CounterVisual';
+import {CutoutVisual} from './visuals/CutoutVisual';
+import {DiagramVisual} from './visuals/DiagramVisual';
+import {SketchVisual} from './visuals/SketchVisual';
+import {StickmanVisual} from './visuals/StickmanVisual';
+import {TimelineVisual} from './visuals/TimelineVisual';
 import {Card, DrawPath, Highlight, useProgress, useSpring} from './primitives';
 
 type Props = {visual: Visual; theme: Theme; brand: Brand; ratio: AspectRatio};
@@ -21,59 +27,6 @@ const Heading: React.FC<{theme: Theme; brand: Brand; text: string; size?: number
     <Highlight theme={theme}>{text}</Highlight>
   </div>
 );
-
-const Body: React.FC<{theme: Theme; brand: Brand; text: string}> = ({theme, brand, text}) => (
-  <div style={{fontFamily: theme.font, fontSize: brand.typography.body.size, color: theme.muted, lineHeight: 1.3}}>
-    {text}
-  </div>
-);
-
-const Stat: React.FC<Props> = ({visual, theme, brand}) => {
-  const s = useSpring();
-  return (
-    <Card theme={theme} style={{textAlign: 'center', transform: `scale(${0.85 + 0.15 * s})`, opacity: s}}>
-      <div style={{fontFamily: theme.headingFont, fontWeight: 800, fontSize: 200, color: theme.accent, lineHeight: 1}}>
-        {visual.value}
-      </div>
-      <div style={{fontFamily: theme.font, fontSize: brand.typography.h2.size * 0.65, color: theme.text, marginTop: 16}}>
-        {visual.label}
-      </div>
-    </Card>
-  );
-};
-
-const Bullets: React.FC<Props> = ({visual, theme, brand}) => {
-  const frame = useCurrentFrame();
-  return (
-    <Card theme={theme}>
-      {visual.heading ? <Heading theme={theme} brand={brand} text={visual.heading} size={64} /> : null}
-      <ul style={{margin: '24px 0 0', padding: 0, listStyle: 'none'}}>
-        {(visual.items ?? []).map((item, i) => {
-          const o = interpolate(frame, [10 + i * 10, 22 + i * 10], [0, 1], {
-            extrapolateLeft: 'clamp',
-            extrapolateRight: 'clamp',
-          });
-          return (
-            <li
-              key={item}
-              style={{
-                fontFamily: theme.font,
-                fontSize: brand.typography.body.size,
-                color: theme.text,
-                opacity: o,
-                transform: `translateX(${(1 - o) * -40}px)`,
-                margin: '14px 0',
-              }}
-            >
-              <span style={{color: theme.accent, marginRight: 16}}>&#9679;</span>
-              {item}
-            </li>
-          );
-        })}
-      </ul>
-    </Card>
-  );
-};
 
 const Chart: React.FC<Props> = ({visual, theme, brand}) => {
   const data = visual.data ?? [];
@@ -102,13 +55,25 @@ const Chart: React.FC<Props> = ({visual, theme, brand}) => {
   );
 };
 
+/** Archive/Wikimedia photo with a slow Ken Burns push so a still never sits frozen. */
 const ImageView: React.FC<Props> = ({visual, theme, brand}) => {
+  const frame = useCurrentFrame();
+  const {durationInFrames} = useVideoConfig();
   const s = useSpring();
+  const t = interpolate(frame, [0, Math.max(1, durationInFrames)], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  const scale = 1.04 + 0.12 * t;
+  const panX = (t - 0.5) * -3.2; // percent
+  const panY = (t - 0.5) * -2.2;
   return (
     <Card theme={theme} style={{padding: theme.card === 'paper' ? 16 : 24, opacity: s}}>
-      {visual.src ? (
-        <Img src={staticFile(visual.src)} style={{width: '100%', maxHeight: 760, objectFit: 'cover', display: 'block'}} />
-      ) : null}
+      <div style={{width: '100%', height: 820, overflow: 'hidden', position: 'relative'}}>
+        {visual.src ? (
+          <Img
+            src={staticFile(visual.src)}
+            style={{width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: `scale(${scale}) translate(${panX}%, ${panY}%)`}}
+          />
+        ) : null}
+      </div>
       {visual.heading ? (
         <div style={{marginTop: 20}}>
           <Heading theme={theme} brand={brand} text={visual.heading} size={52} />
@@ -120,7 +85,6 @@ const ImageView: React.FC<Props> = ({visual, theme, brand}) => {
     </Card>
   );
 };
-
 /** Boxes connected by arrows that draw on one after another. */
 const Flow: React.FC<Props> = ({visual, theme, brand, ratio}) => {
   const items = visual.items ?? [];
@@ -182,13 +146,16 @@ const MapPanel: React.FC<Props> = ({visual, theme, brand, ratio}) => {
   );
 };
 
+/**
+ * Every visual type draws something concrete. The text-first types (headline, quote, bullets) are rendered
+ * as an illustration that carries the text, so no scene is ever plain text on an empty background.
+ */
 export const SceneView: React.FC<Props> = (props) => {
-  const {visual, theme, brand} = props;
+  const {visual} = props;
   switch (visual.type) {
     case 'stat':
-      return <Stat {...props} />;
-    case 'bullets':
-      return <Bullets {...props} />;
+    case 'counter':
+      return <CounterVisual {...props} />;
     case 'chart':
       return <Chart {...props} />;
     case 'image':
@@ -197,25 +164,20 @@ export const SceneView: React.FC<Props> = (props) => {
       return <Flow {...props} />;
     case 'map':
       return <MapPanel {...props} />;
+    case 'diagram':
+      return <DiagramVisual {...props} />;
+    case 'bullets':
+      return <DiagramVisual {...props} />;
+    case 'cutout':
+      return <CutoutVisual {...props} />;
     case 'quote':
-      return (
-        <Card theme={theme}>
-          <div style={{fontFamily: theme.headingFont, fontSize: 64, fontStyle: 'italic', color: theme.text}}>
-            &ldquo;{visual.text}&rdquo;
-          </div>
-          {visual.label ? <Body theme={theme} brand={brand} text={`- ${visual.label}`} /> : null}
-        </Card>
-      );
+      return <CutoutVisual {...props} visual={{...visual, heading: `\u201C${visual.text ?? visual.heading ?? ''}\u201D`, icon: visual.icon ?? 'megaphone'}} />;
+    case 'timeline':
+      return <TimelineVisual {...props} />;
+    case 'stickman':
+      return <StickmanVisual {...props} />;
     default:
-      return (
-        <div>
-          <Heading theme={theme} brand={brand} text={visual.heading ?? ''} />
-          {visual.text ? (
-            <div style={{marginTop: 28}}>
-              <Body theme={theme} brand={brand} text={visual.text} />
-            </div>
-          ) : null}
-        </div>
-      );
+      // sketch and headline
+      return <SketchVisual {...props} />;
   }
 };

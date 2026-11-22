@@ -7,10 +7,11 @@ can lay them over the ducked bed.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
-from common import MUSIC_LIBRARY, run, which
+from common import MUSIC_LIBRARY, read_json, run, which, write_json
 
 SFX_DIR = MUSIC_LIBRARY.parent / "sfx_library"
 
@@ -34,6 +35,10 @@ RECIPES: dict[str, tuple[str, str]] = {
         "anoisesrc=d=0.5:c=brown:a=0.7:r=48000",
         "highpass=f=1500,tremolo=f=35:d=0.8,afade=t=in:d=0.05,afade=t=out:st=0.35:d=0.15",
     ),
+    "chalk_draw": (
+        "anoisesrc=d=0.6:c=brown:a=0.8:r=48000",
+        "highpass=f=900,lowpass=f=7000,tremolo=f=28:d=0.7,afade=t=in:d=0.06,afade=t=out:st=0.4:d=0.2",
+    ),
     "riser": ("aevalsrc='0.35*sin(2*PI*(180*t+260*t*t))':d=1.2:s=48000", "afade=t=in:d=0.9,afade=t=out:st=1.05:d=0.15"),
     "ding": ("aevalsrc='0.5*sin(2*PI*1320*t)*exp(-6*t)+0.2*sin(2*PI*2640*t)*exp(-9*t)':d=0.9:s=48000", ""),
 }
@@ -41,11 +46,16 @@ RECIPES: dict[str, tuple[str, str]] = {
 # What each blueprint/style uses at scene changes and on "reveal" visuals.
 STYLE_CUES: dict[str, dict[str, str]] = {
     "concept": {"transition": "subtle_whoosh", "reveal": "pop"},
-    "vox": {"transition": "paper_flip", "reveal": "click"},
-    "whiteboard": {"transition": "pen_scratch", "reveal": "pop"},
+    "vox": {"transition": "paper_flip", "reveal": "pop"},
+    "whiteboard": {"transition": "chalk_draw", "reveal": "pop"},
     "minimal": {"transition": "subtle_whoosh", "reveal": "click"},
 }
-REVEAL_VISUALS = {"stat", "chart", "map"}
+REVEAL_VISUALS = {"stat", "counter", "chart", "map", "timeline", "cutout", "sketch", "diagram"}
+RISER_BEATS = {"turning_point", "case_study", "punchline"}
+REQUIRED = ("whoosh", "pop", "paper_flip", "chalk_draw", "riser")  # the manifest maps these to local clips
+SFX_REL_DB = -12.0  # cue peak relative to the voice peak
+MANIFEST = SFX_DIR / "manifest.json"
+LICENSE = "CC0-1.0 (synthesized locally by audio_pipeline/sfx.py; no third-party audio)"
 
 
 def ensure_library() -> dict[str, Path]:
@@ -59,7 +69,37 @@ def ensure_library() -> dict[str, Path]:
                 cmd += ["-af", filt]
             run([*cmd, "-ac", "1", "-ar", "48000", str(dest)])
         out[name] = dest
+    write_manifest(out)
     return out
+
+
+def peak_db(path: Path) -> float:
+    """Peak level in dBFS (ffmpeg volumedetect)."""
+    res = run([which("ffmpeg"), "-hide_banner", "-i", str(path), "-af", "volumedetect", "-f", "null", "-"])
+    m = re.search(r"max_volume:\s*(-?[\d.]+) dB", res.stderr)
+    return float(m.group(1)) if m else -6.0
+
+
+def cue_volume(voice_peak_db: float | None, sfx_peak_db: float, rel_db: float = SFX_REL_DB) -> float:
+    """Linear gain that puts a cue's peak rel_db (default -12 dB) below the voice peak."""
+    voice = -3.0 if voice_peak_db is None else voice_peak_db
+    return round(10 ** ((voice + rel_db - sfx_peak_db) / 20), 4)
+
+
+def write_manifest(lib: dict[str, Path]) -> dict[str, Any]:
+    """audio_pipeline/sfx_library/manifest.json: name -> local clip, license, measured peak."""
+    old = {c["name"]: c for c in read_json(MANIFEST).get("sfx", [])} if MANIFEST.exists() else {}
+    clips = []
+    for name, path in sorted(lib.items()):
+        prev = old.get(name)
+        peak = prev["peak_db"] if prev and prev.get("peak_db") is not None else round(peak_db(path), 1)
+        clips.append(
+            {"name": name, "file": path.name, "license": LICENSE, "peak_db": peak, "required": name in REQUIRED}
+        )
+    data = {"relative_level_db": SFX_REL_DB, "sfx": clips}
+    if not MANIFEST.exists() or read_json(MANIFEST) != data:
+        write_json(MANIFEST, data)
+    return data
 
 
 def auto_cues(
@@ -67,7 +107,7 @@ def auto_cues(
     scenes: list[dict[str, Any]],
     theme: str = "concept",
     blueprint_cues: list[str] | None = None,
-    volume: float = 0.35,
+    voice_peak_db: float | None = None,
 ) -> list[dict[str, Any]]:
     """One transition sound per scene change, plus a reveal sound on stat/chart/map scenes."""
     lib = ensure_library()
@@ -77,11 +117,21 @@ def auto_cues(
         if known:
             cues["transition"] = known[0]
             cues["reveal"] = known[1] if len(known) > 1 else cues["reveal"]
+    peaks = {c["name"]: c["peak_db"] for c in read_json(MANIFEST)["sfx"]} if MANIFEST.exists() else {}
+
+    def vol(name: str) -> float:
+        return cue_volume(voice_peak_db, peaks.get(name, -6.0))
+
     out: list[dict[str, Any]] = []
+    risered = False
     for i, t in enumerate(timing["scenes"]):
+        scene = scenes[i] if i < len(scenes) else {}
         if i > 0:
-            out.append({"file": str(lib[cues["transition"]]), "at": max(0.0, t["start"] - 0.12), "volume": volume})
-        visual = (scenes[i] if i < len(scenes) else {}).get("visual", {})
-        if visual.get("type") in REVEAL_VISUALS:
-            out.append({"file": str(lib[cues["reveal"]]), "at": t["start"] + 0.35, "volume": volume * 0.8})
+            if scene.get("beat") in RISER_BEATS and not risered:
+                risered = True
+                out.append({"file": str(lib["riser"]), "at": max(0.0, t["start"] - 1.0), "volume": vol("riser")})
+            at = max(0.0, t["start"] - 0.12)
+            out.append({"file": str(lib[cues["transition"]]), "at": at, "volume": vol(cues["transition"])})
+        if scene.get("visual", {}).get("type") in REVEAL_VISUALS:
+            out.append({"file": str(lib[cues["reveal"]]), "at": t["start"] + 0.35, "volume": vol(cues["reveal"])})
     return out

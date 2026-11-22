@@ -26,6 +26,7 @@ from audio_pipeline import make_voice_and_subs, mix_music_and_sfx, sfx  # noqa: 
 from common import OUTPUT, ROOT, read_json, settings, write_json  # noqa: E402
 from pipeline import render  # noqa: E402
 from pipeline.router import route  # noqa: E402
+from pipeline.visuals import validate_script as validate_visuals  # noqa: E402
 
 ASPECTS = ("9:16", "16:9", "1:1")
 
@@ -138,6 +139,8 @@ def produce(
     )
     r = route(style)
     run_dir = project / "assets"
+    for note in validate_visuals(script, r.look):  # text-only scenes become illustrated ones
+        print(f"      visuals: {note}", flush=True)
 
     print(f"[1/6] voice + captions ({style}, {aspect})", flush=True)
     timing = make_voice_and_subs.run_pipeline(script_path, run_dir, whisper_model=whisper_model, device=device)
@@ -147,7 +150,11 @@ def produce(
     sfx_spec = script.get("sfx", "auto")
     if sfx_spec == "auto":
         cues = sfx.auto_cues(
-            timing, script.get("scenes", []), r.look, blueprint.get("audio_profile", {}).get("sfx_cues")
+            timing,
+            script.get("scenes", []),
+            r.look,
+            blueprint.get("audio_profile", {}).get("sfx_cues"),
+            voice_peak_db=sfx.peak_db(run_dir / "narration.wav"),
         )
     else:
         cues = sfx_spec if isinstance(sfx_spec, list) else []

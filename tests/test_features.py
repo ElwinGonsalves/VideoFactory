@@ -1,4 +1,4 @@
-"""Pixel QA, post caps, settings, SFX cues, cover text, clipper crop, UI security. No rendering."""
+﻿"""Pixel QA, post caps, settings, SFX cues, cover text, clipper crop, UI security. No rendering."""
 
 from __future__ import annotations
 
@@ -56,8 +56,14 @@ def test_qa_flags_empty_frame_and_low_contrast_cover(frames) -> None:  # type: i
 
 
 def test_qa_16x9_has_no_shorts_bands(frames) -> None:  # type: ignore[no-untyped-def]
-    full, bg = frames("hook", (160, 185, 30, 70))
+    full, bg = frames("hook", (30, 185, 10, 98))
     assert qa.check_frame(full, bg, "16:9", "hook")["ok"]
+
+
+def test_qa_flags_text_only_center(frames) -> None:  # type: ignore[no-untyped-def]
+    full, bg = frames("mid", (90, 100, 20, 90))  # one thin line of text in the middle
+    r = qa.check_frame(full, bg, "16:9", "mid")
+    assert any("center is mostly empty" in i for i in r["issues"])
 
 
 def test_post_log_caps(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -97,7 +103,7 @@ def test_sfx_auto_cues(monkeypatch: pytest.MonkeyPatch) -> None:
     scenes = [{"visual": {"type": "headline"}}, {"visual": {"type": "stat"}}, {"visual": {"type": "quote"}}]
     cues = sfx.auto_cues(timing, scenes, "vox")
     names = [Path(c["file"]).stem for c in cues]
-    assert names == ["paper_flip", "click", "paper_flip"]  # 2 transitions + 1 reveal on the stat
+    assert names == ["paper_flip", "pop", "paper_flip"]  # 2 transitions + 1 reveal on the stat
     cues = sfx.auto_cues(timing, scenes, "concept", blueprint_cues=["pop", "unknown", "ding"])
     assert [Path(c["file"]).stem for c in cues] == ["pop", "ding", "pop"]
 

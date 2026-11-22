@@ -13,9 +13,13 @@ from typing import Any
 
 from llm.providers import GroundingUnavailable, LLMError, Provider, get_provider
 from pipeline.router import ROUTES
+from pipeline.visuals import ICON_NAMES, STICK_POSES
 from prompts.script_templates import REGISTRY
 
-VISUAL_TYPES = ["headline", "stat", "bullets", "chart", "image", "quote", "flow", "map"]
+VISUAL_TYPES = [
+    "headline", "stat", "bullets", "chart", "image", "quote", "flow", "map",
+    "diagram", "counter", "sketch", "cutout", "timeline", "stickman",
+]  # fmt: skip
 MOODS = ["chill", "documentary", "upbeat", "dramatic"]
 CAPTION_STYLES = ["word_highlight", "phrase_box", "minimal_editorial", "none"]
 REMOTION_STYLES = sorted(k for k, r in ROUTES.items() if r.engine in ("remotion", "openmontage"))
@@ -82,6 +86,10 @@ SCRIPT_SCHEMA: dict[str, Any] = {
                                 },
                             },
                             "countries": {"type": "array", "items": {"type": "string"}, "description": "ISO A3 codes"},
+                            "icon": {"type": "string", "enum": list(ICON_NAMES)},
+                            "draw_cues": {"type": "array", "items": {"type": "string"}},
+                            "pose": {"type": "string", "enum": list(STICK_POSES)},
+                            "bubble": {"type": "string"},
                         },
                         "required": ["type"],
                     },
@@ -200,6 +208,32 @@ def normalize_visual(v: dict[str, Any], narration: str) -> dict[str, Any]:
         codes = [str(c).upper()[:3] for c in (v.get("countries") or []) if re.fullmatch(r"[A-Za-z]{3}", str(c))]
         out["countries"] = codes[:8]
         out["label"] = _clip(v.get("label") or "", 40)
+    if v.get("icon") in ICON_NAMES:
+        out["icon"] = v["icon"]
+    if t == "diagram":
+        out["items"] = [_clip(i, 16) for i in (v.get("items") or []) if str(i).strip()][:6] or [_clip(narration, 16)]
+    if t == "counter":
+        out["value"] = _clip(v.get("value") or "?", 10)
+        out["label"] = _clip(v.get("label") or "", 40)
+        bars = []
+        for d in v.get("data") or []:
+            try:
+                bars.append({"label": _clip(d["label"], 10), "value": float(d["value"])})
+            except (KeyError, TypeError, ValueError):
+                continue
+        if len(bars) >= 2:
+            out["data"] = bars[:5]
+    if t == "sketch":
+        out["draw_cues"] = [_clip(c, 32) for c in (v.get("draw_cues") or v.get("items") or []) if str(c).strip()][:4]
+    if t == "cutout" and v.get("label"):
+        out["label"] = _clip(v["label"], 40)
+    if t == "timeline":
+        out["items"] = [_clip(i, 40) for i in (v.get("items") or []) if str(i).strip()][:5] or [_clip(narration, 40)]
+    if t == "stickman":
+        out["pose"] = v.get("pose") if v.get("pose") in STICK_POSES else "idle"
+        out["bubble"] = _clip(v.get("bubble") or narration, 80)
+    if t in ("sketch", "cutout") and "heading" not in out:
+        out["heading"] = _clip(narration, 48)
     if t == "headline" and "heading" not in out:
         out["heading"] = _clip(narration, 48)
     return out

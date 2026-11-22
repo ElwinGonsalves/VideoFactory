@@ -8,8 +8,31 @@ export type Caption = {word: string; start: number; end: number};
 
 export type ChartDatum = {label: string; value: number};
 
+export type StickPose = 'idle' | 'point' | 'shrug' | 'run' | 'celebrate' | 'panic' | 'think';
+
+export type TimelineEvent = {when: string; label: string};
+
 export type Visual = {
-  type: 'headline' | 'stat' | 'bullets' | 'chart' | 'image' | 'quote' | 'flow' | 'map';
+  /**
+   * Concrete visuals: stat, counter, chart, flow, diagram, sketch, cutout, timeline, stickman, image, map.
+   * headline / bullets / quote are text-first types; the renderer always draws an illustration with them
+   * (never plain text on an empty background).
+   */
+  type:
+    | 'headline'
+    | 'stat'
+    | 'bullets'
+    | 'chart'
+    | 'image'
+    | 'quote'
+    | 'flow'
+    | 'map'
+    | 'diagram'
+    | 'counter'
+    | 'sketch'
+    | 'cutout'
+    | 'timeline'
+    | 'stickman';
   heading?: string;
   text?: string;
   value?: string;
@@ -21,6 +44,15 @@ export type Visual = {
   credit?: string;
   /** map: ISO A3 codes to highlight, e.g. ["USA", "IND"]. */
   countries?: string[];
+  /** Icon name from components/visuals/icons.tsx (sketch, cutout, diagram hub, headline art). */
+  icon?: string;
+  /** sketch: labels drawn one after another around the icon. */
+  draw_cues?: string[];
+  /** timeline: dated milestones, in order. */
+  events?: TimelineEvent[];
+  /** stickman: pose and speech-bubble line. */
+  pose?: StickPose;
+  bubble?: string;
 };
 
 export type Scene = {

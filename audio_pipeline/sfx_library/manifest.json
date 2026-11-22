@@ -1,0 +1,68 @@
+{
+  "relative_level_db": -12.0,
+  "sfx": [
+    {
+      "name": "chalk_draw",
+      "file": "chalk_draw.wav",
+      "license": "CC0-1.0 (synthesized locally by audio_pipeline/sfx.py; no third-party audio)",
+      "peak_db": -15.8,
+      "required": true
+    },
+    {
+      "name": "click",
+      "file": "click.wav",
+      "license": "CC0-1.0 (synthesized locally by audio_pipeline/sfx.py; no third-party audio)",
+      "peak_db": -3.2,
+      "required": false
+    },
+    {
+      "name": "ding",
+      "file": "ding.wav",
+      "license": "CC0-1.0 (synthesized locally by audio_pipeline/sfx.py; no third-party audio)",
+      "peak_db": -4.4,
+      "required": false
+    },
+    {
+      "name": "paper_flip",
+      "file": "paper_flip.wav",
+      "license": "CC0-1.0 (synthesized locally by audio_pipeline/sfx.py; no third-party audio)",
+      "peak_db": -45.1,
+      "required": true
+    },
+    {
+      "name": "pen_scratch",
+      "file": "pen_scratch.wav",
+      "license": "CC0-1.0 (synthesized locally by audio_pipeline/sfx.py; no third-party audio)",
+      "peak_db": -17.9,
+      "required": false
+    },
+    {
+      "name": "pop",
+      "file": "pop.wav",
+      "license": "CC0-1.0 (synthesized locally by audio_pipeline/sfx.py; no third-party audio)",
+      "peak_db": -2.0,
+      "required": true
+    },
+    {
+      "name": "riser",
+      "file": "riser.wav",
+      "license": "CC0-1.0 (synthesized locally by audio_pipeline/sfx.py; no third-party audio)",
+      "peak_db": -9.1,
+      "required": true
+    },
+    {
+      "name": "subtle_whoosh",
+      "file": "subtle_whoosh.wav",
+      "license": "CC0-1.0 (synthesized locally by audio_pipeline/sfx.py; no third-party audio)",
+      "peak_db": -17.7,
+      "required": false
+    },
+    {
+      "name": "whoosh",
+      "file": "whoosh.wav",
+      "license": "CC0-1.0 (synthesized locally by audio_pipeline/sfx.py; no third-party audio)",
+      "peak_db": -11.5,
+      "required": true
+    }
+  ]
+}

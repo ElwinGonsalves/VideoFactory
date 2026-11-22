@@ -24,6 +24,9 @@ ZONE_TOLERANCE = 0.002  # 0.2% of a band may differ (anti-aliasing, glow, drop s
 EDGE_PX = 3
 MIN_CONTENT = 0.004
 MIN_COVER_STD = 45.0
+CENTER_SHARE = 0.55  # the visual must fill the middle 55% of the frame
+CENTER_GRID = 8
+MIN_CENTER_CELLS = 0.30  # share of grid cells in that box that hold any content
 
 
 def unsafe_mask(h: int, w: int, aspect: str) -> np.ndarray:
@@ -32,6 +35,20 @@ def unsafe_mask(h: int, w: int, aspect: str) -> np.ndarray:
         mask[int(h * 0.78) :, :] = True
         mask[:, int(w * 0.85) :] = True
     return mask
+
+
+def center_occupancy(content: np.ndarray) -> float:
+    """Share of an 8x8 grid over the central 55% box that contains content. Text-only scenes score low."""
+    h, w = content.shape
+    y0, y1 = int(h * (1 - CENTER_SHARE) / 2), int(h * (1 + CENTER_SHARE) / 2)
+    x0, x1 = int(w * (1 - CENTER_SHARE) / 2), int(w * (1 + CENTER_SHARE) / 2)
+    box = content[y0:y1, x0:x1]
+    cells = [
+        c.mean() > 0.004
+        for rows in np.array_split(box, CENTER_GRID, axis=0)
+        for c in np.array_split(rows, CENTER_GRID, axis=1)
+    ]
+    return float(np.mean(cells))
 
 
 def _load(p: Path) -> np.ndarray:
@@ -63,6 +80,10 @@ def check_frame(full: Path, bg: Path, aspect: str, name: str) -> dict[str, Any]:
     if name != "cover" and coverage < MIN_CONTENT:
         issues.append("frame is almost empty")
 
+    if name != "cover" and coverage >= MIN_CONTENT:
+        occ = center_occupancy(content)
+        if occ < MIN_CENTER_CELLS:
+            issues.append(f"center is mostly empty ({occ:.0%} filled; text-only scene?)")
     if name == "cover":
         luma = (0.299 * a[..., 0] + 0.587 * a[..., 1] + 0.114 * a[..., 2])[: int(h * 0.78)]
         if luma.std() < MIN_COVER_STD:
