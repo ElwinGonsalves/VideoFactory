@@ -1,21 +1,27 @@
 import React from 'react';
-import {AbsoluteFill} from 'remotion';
+import {AbsoluteFill, staticFile, useCurrentFrame} from 'remotion';
 import type {Brand} from '../types';
 import type {Theme} from '../theme';
 
+/**
+ * Theme backgrounds with a slow drift so long holds never look frozen.
+ * Paper and board use the offline textures in studio/public/textures/ (made by
+ * `media_pipeline/fetch_free_media.py --make-textures`); a missing file just falls back to the flat colour.
+ */
 export const Background: React.FC<{theme: Theme; brand: Brand}> = ({theme, brand}) => {
+  const frame = useCurrentFrame();
+  const drift = (frame * 0.15) % 1080;
   switch (theme.background) {
     case 'paper':
       return (
-        <AbsoluteFill style={{backgroundColor: '#f1e9d6'}}>
-          <svg width="100%" height="100%" style={{opacity: 0.35}}>
-            <filter id="grain">
-              <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" stitchTiles="stitch" />
-              <feColorMatrix type="saturate" values="0" />
-            </filter>
-            <rect width="100%" height="100%" filter="url(#grain)" />
-          </svg>
-        </AbsoluteFill>
+        <AbsoluteFill
+          style={{
+            backgroundColor: '#f1e9d6',
+            backgroundImage: `url(${staticFile('textures/paper_grain.png')})`,
+            backgroundSize: '1080px 1080px',
+            backgroundPosition: `${drift}px ${drift * 0.4}px`,
+          }}
+        />
       );
     case 'board':
       return (
@@ -30,14 +36,18 @@ export const Background: React.FC<{theme: Theme; brand: Brand}> = ({theme, brand
       );
     case 'plain':
       return <AbsoluteFill style={{backgroundColor: brand.colors.bgLight}} />;
-    default:
+    default: {
+      // Concept theme: the accent glow orbits slowly.
+      const x = 30 + Math.sin(frame / 90) * 12;
+      const y = 20 + Math.cos(frame / 110) * 8;
       return (
         <AbsoluteFill
           style={{
-            background: `radial-gradient(circle at 30% 20%, ${brand.colors.primary}33 0%, ${brand.colors.bgDark} 55%)`,
+            background: `radial-gradient(circle at ${x}% ${y}%, ${brand.colors.primary}33 0%, ${brand.colors.bgDark} 55%)`,
             backgroundColor: brand.colors.bgDark,
           }}
         />
       );
+    }
   }
 };

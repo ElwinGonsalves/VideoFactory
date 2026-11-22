@@ -1,13 +1,15 @@
 export type AspectRatio = '9:16' | '16:9' | '1:1';
 export type CaptionStyle = 'word_highlight' | 'phrase_box' | 'minimal_editorial' | 'none';
 export type ThemeId = 'concept' | 'vox' | 'whiteboard' | 'minimal';
+/** Scene-to-scene transition; matches blueprint `pacing.transition_style`. */
+export type TransitionStyle = 'hard_cut' | 'fade' | 'whip_pan' | 'paper_slide' | 'pen_draw';
 
 export type Caption = {word: string; start: number; end: number};
 
 export type ChartDatum = {label: string; value: number};
 
 export type Visual = {
-  type: 'headline' | 'stat' | 'bullets' | 'chart' | 'image' | 'quote' | 'flow';
+  type: 'headline' | 'stat' | 'bullets' | 'chart' | 'image' | 'quote' | 'flow' | 'map';
   heading?: string;
   text?: string;
   value?: string;
@@ -17,6 +19,8 @@ export type Visual = {
   /** Path relative to studio/public (e.g. assets/media/foo.jpg). */
   src?: string;
   credit?: string;
+  /** map: ISO A3 codes to highlight, e.g. ["USA", "IND"]. */
+  countries?: string[];
 };
 
 export type Scene = {
@@ -55,5 +59,22 @@ export type VideoProps = {
   audioSrc?: string;
   showSafeZones: boolean;
   /** Only used by UniversalCustom. */
+  theme?: ThemeId;
+  /** Frame-0 cover: 2-5 word hook shown full-contrast for the first 0.5 s. Empty = no cover. */
+  coverText?: string;
+  transition?: TransitionStyle;
+  /** Visual QA: render background only, so a pixel diff isolates content. */
+  qaHideContent?: boolean;
+};
+
+export type ThumbnailProps = {
+  aspectRatio: AspectRatio;
+  text: string;
+  subtext?: string;
+  /** Background frame, relative to studio/public. */
+  bgSrc?: string;
+  /** Blur in px; set for video frames (which contain text), 0 for photos. */
+  bgBlur?: number;
+  brand: Brand;
   theme?: ThemeId;
 };

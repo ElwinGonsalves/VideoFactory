@@ -3,6 +3,7 @@ import {Img, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'rem
 import {isPortrait} from '../format';
 import type {Theme} from '../theme';
 import type {AspectRatio, Brand, Visual} from '../types';
+import {MapView} from './MapView';
 import {Card, DrawPath, Highlight, useProgress, useSpring} from './primitives';
 
 type Props = {visual: Visual; theme: Theme; brand: Brand; ratio: AspectRatio};
@@ -166,6 +167,21 @@ const Flow: React.FC<Props> = ({visual, theme, brand, ratio}) => {
   );
 };
 
+const MapPanel: React.FC<Props> = ({visual, theme, brand, ratio}) => {
+  const {width} = useVideoConfig();
+  const inner = Math.round(width * (isPortrait(ratio) ? 0.79 : 0.9));
+  return (
+    <MapView
+      countries={visual.countries ?? []}
+      heading={visual.heading}
+      label={visual.label}
+      theme={theme}
+      brand={brand}
+      width={inner}
+    />
+  );
+};
+
 export const SceneView: React.FC<Props> = (props) => {
   const {visual, theme, brand} = props;
   switch (visual.type) {
@@ -179,6 +195,8 @@ export const SceneView: React.FC<Props> = (props) => {
       return <ImageView {...props} />;
     case 'flow':
       return <Flow {...props} />;
+    case 'map':
+      return <MapPanel {...props} />;
     case 'quote':
       return (
         <Card theme={theme}>
