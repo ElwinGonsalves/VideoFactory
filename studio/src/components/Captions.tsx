@@ -79,9 +79,9 @@ export const Captions: React.FC<{
             <span
               key={`${w.start}-${i}`}
               style={{
+                // Colour only: scaling the active word ate the gap on long words and broke the safe zone.
                 color: active ? brand.colors.primaryLight : undefined,
                 display: 'inline-block',
-                transform: active ? 'scale(1.08)' : 'none',
               }}
             >
               {w.word}
