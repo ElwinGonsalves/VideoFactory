@@ -1,0 +1,47 @@
+{
+  "title": "Why Netflix Mailed DVDs for 10 Years #shorts",
+  "description": "The compounding advantage explained with Netflix's DVD-to-streaming story.",
+  "tags": ["business", "strategy", "netflix", "shorts", "explainer"],
+  "style": "concept_explainer",
+  "aspect_ratio": "9:16",
+  "music_mood": "documentary",
+  "caption_style": "word_highlight",
+  "platforms": ["youtube"],
+  "visibility": "unlisted",
+  "voice": { "engine": "edge-tts", "voice": "en-US-AndrewNeural", "rate": "+5%" },
+  "scenes": [
+    {
+      "narration": "Why did Netflix keep mailing DVDs for ten years?",
+      "visual": { "type": "headline", "heading": "Why mail DVDs for 10 years?" }
+    },
+    {
+      "narration": "Because the best companies build a slow advantage first, and only then make the big leap.",
+      "visual": { "type": "flow", "heading": "The slow advantage", "items": ["Build", "Learn", "Leap"] }
+    },
+    {
+      "narration": "Every DVD they shipped taught them what people actually watch, and when they stop watching.",
+      "visual": { "type": "bullets", "heading": "Each DVD = data", "items": ["What people rent", "What they finish", "What they skip"] }
+    },
+    {
+      "narration": "By two thousand seven, Netflix had over seven million subscribers and a recommendation engine nobody could copy.",
+      "visual": { "type": "stat", "value": "7M+", "label": "subscribers by 2007" }
+    },
+    {
+      "narration": "So when streaming arrived, they were ready. Subscribers grew from about seven million to over two hundred million.",
+      "visual": {
+        "type": "chart",
+        "heading": "Subscribers (millions)",
+        "data": [
+          { "label": "2007", "value": 7 },
+          { "label": "2012", "value": 33 },
+          { "label": "2017", "value": 110 },
+          { "label": "2022", "value": 230 }
+        ]
+      }
+    },
+    {
+      "narration": "The leap looked sudden. The advantage took ten years. So, why did Netflix keep mailing DVDs?",
+      "visual": { "type": "quote", "text": "The leap looked sudden. The advantage took ten years." }
+    }
+  ]
+}
