@@ -4,22 +4,70 @@ Local video and Shorts production with a web UI. Type a topic (or paste referenc
 
 No Pexels and no paid APIs required. Voices come from Edge-TTS (free) or Kokoro (local, GPU), captions from faster-whisper (local, GPU), music from a bundled royalty-free library with Archive.org/Wikimedia fallbacks, sound effects are synthesized locally, footage comes from Wikimedia Commons, Archive.org and NASA (keyless), rendering from Remotion, Manim, handanim or explainroo (local). Writing (ideas, scripts, metadata) uses the Gemini free tier by default, Ollama for fully offline, or any OpenAI-compatible endpoint. Uploads use browser cookies via social-auto-upload, or the official APIs once your apps are approved.
 
-## Quickstart
+## Start in under 5 minutes
+
+Needs Python 3.10+, Node 20+ and FFmpeg on PATH.
 
 ```powershell
-python scripts\bootstrap.py                    # fresh clone only: venv, GPU libs, npm, engines, music, skills, assets
-.venv\Scripts\python scripts\doctor.py         # health check
-.venv\Scripts\python scripts\smoke_test.py     # 5 s end-to-end render with checks
-.venv\Scripts\python ui\server.py              # web UI at http://127.0.0.1:8765
+git clone https://github.com/ElwinGonsalves/VideoFactory video-factory
+cd video-factory
+.\start.ps1            # macOS/Linux: ./start.sh
 ```
 
-Then add your Gemini key in **Settings** and render `projects/concept-001` from the **Create** tab. Full walkthrough: [docs/FIRST_VIDEO_GUIDE.md](docs/FIRST_VIDEO_GUIDE.md).
+The first run creates `.venv`, installs Remotion and builds the studio UI (the minimum, a few minutes), then opens http://127.0.0.1:8765. Later runs start straight away. `.\start.ps1 -Full` also installs the optional extras (CUDA libraries for Kokoro and Whisper, the Explainroo/OpenMontage/clipper engines, the uploader, the music library, agent skills); `.\start.ps1 -Port 8766 -NoBrowser` picks another port.
+
+The first-run guide offers **Judge Demo Mode**, which needs no API key: a sample Short, a sample Style Blueprint and a sample Batch preview. To write your own scripts, paste a free Gemini key in step 2 (or later in **Settings**), or point it at Ollama. Full walkthrough: [docs/FIRST_VIDEO_GUIDE.md](docs/FIRST_VIDEO_GUIDE.md).
+
+Checks:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\doctor.py       # health check
+.\.venv\Scripts\python.exe scripts\smoke_test.py   # 5 s end-to-end render with checks
+```
+
+## The studio
+
+- **Create**: from an idea or your exact script, pick a look from Style Picker cards (real frames from each engine), then render.
+- **Ideas**: brainstorm from a topic, or learn a style's "DNA" from reference videos and approve the pitches you like.
+- **Batch**: drop an Excel/CSV sheet or paste a Google Sheets link; rows are checked before anything renders.
+- **Library**: the video in a 9:16 phone frame, QA frames, fact-check notes, download, publish, metadata.
+- **Schedule**: pre-flight checks, then a staggered builder for an overnight queue.
+- **Studio Status Pill → Activity Drawer**: what is rendering now (a 5-node stepper: Script → Voice → Music+SFX → Render → QA), what is scheduled next, and recent results with Open in Library / Retry.
+- **Stitched Engines**: live health of every engine in the pipeline.
+
+The previous UI is still at `/classic`.
+
+## Frankenstein architecture
+
+video-factory is a creature stitched from independent open-source organs. Each does one job and is swapped or skipped without touching the others:
+
+| Organ | Engine | Job |
+| --- | --- | --- |
+| Brain | Gemini free tier / Ollama / OpenAI-compatible | Ideas, scripts, titles, reading reference frames |
+| Voice box | Edge-TTS or Kokoro | Narration |
+| Ears | faster-whisper | Word-level captions (audio is the master clock) |
+| Heart | FFmpeg | Music ducking, SFX, -14 LUFS, H.264 encode |
+| Skeleton | Remotion | Concept, Vox, whiteboard and long-form compositions |
+| Left hand | Explainroo | Rough.js whiteboard engine |
+| Right hand | Manim | Math and algorithm animation |
+| Eyes | WatchVideo + PySceneDetect | Reading reference videos into a Style Blueprint |
+| Hands | Playwright (social-auto-upload) | Cookie-based uploads |
+
+`pipeline/router.py` picks the organs for a style, `make_video.py` runs them in order, and `pipeline/qa.py` checks the stills for clipping and Shorts safe zones before the final render. The studio parses each job's log into the 5-node stepper (`ui/studio.py`).
+
+## How Kiro built it
+
+- **Spec**: `.kiro/specs/studio-ui-v3/` holds the requirements (EARS), design and task list for the UI rebuild; each task traces to a requirement.
+- **Steering**: `.kiro/steering/video-factory.md` (always on) encodes the pipeline rules: audio first, safe zones, the QA-stills loop, approval before rendering ideas. `.kiro/steering/studio-ui.md` loads for `frontend/**` and points at `DESIGN.md`, the UI primitives and the test port.
+- **Hooks**: `.kiro/hooks/` rebuilds and runs the 4-viewport Playwright audit after frontend edits, and lints and tests Python on save.
+- **MCP**: the handanim whiteboard server (`.kiro/settings/mcp.example.json`; `bootstrap.py --mcp` writes your local copy).
+- **Design process**: the audit, critique and design-system work are in [docs/UX_AUDIT.md](docs/UX_AUDIT.md), the visual system in [DESIGN.md](DESIGN.md), product context in [PRODUCT.md](PRODUCT.md).
 
 ## What is in here
 
 | Module | Entry point | Does |
 | --- | --- | --- |
-| Web UI | `ui/server.py` | Create · Ideas · Batch · Library (player, QA, metadata, publish) · Schedule (pre-flight, builder) · Settings (keys, platform logins, alerts, spend limit) |
+| Web UI | `start.ps1` → `ui/server.py`, React app in `frontend/` | Status Pill + Activity Drawer · Create · Ideas · Batch · Library (player, QA, metadata, publish) · Schedule (pre-flight, builder) · Settings (keys, platform logins, alerts, spend limit) |
 | Orchestrator | `make_video.py` | voice → music + SFX → route → visual QA → render → thumbnail + metadata |
 | Language model | `llm/` | Gemini / Ollama / OpenAI-compatible: ideas, scripts, titles, hashtags, reading reference frames |
 | Analyzer | `analyzer/analyze_reference.py` | Reference links → contact sheets, transcript, shot pacing, vision → `style_blueprint.json` → 5 ideas → approval |
@@ -40,13 +88,14 @@ Then add your Gemini key in **Settings** and render `projects/concept-001` from 
 - [SCHEDULER.md](docs/SCHEDULER.md): pre-flight, builder, gate, caps, running at startup, inspecting state
 - [BATCH_SHEETS.md](docs/BATCH_SHEETS.md): Excel / CSV / Google Sheets batches
 - [ADDING_STYLES.md](docs/ADDING_STYLES.md): blueprints from reference videos, scene types, transitions, engines, skills
+- [UX_AUDIT.md](docs/UX_AUDIT.md) and [DESIGN.md](DESIGN.md): the UI audit, the rebuild's verification, and the visual system
 
 ## Development
 
 ```powershell
-.venv\Scripts\ruff check . ; .venv\Scripts\ruff format --check .
-.venv\Scripts\python -m pytest
-cd studio; npx tsc --noEmit
+.\.venv\Scripts\ruff.exe check . ; .\.venv\Scripts\ruff.exe format --check .
+.\.venv\Scripts\python.exe -m pytest
+cd studio; npx tsc --noEmit; cd ..\frontend; npm run build   # tsc + vite build
 ```
 
 ## Licenses

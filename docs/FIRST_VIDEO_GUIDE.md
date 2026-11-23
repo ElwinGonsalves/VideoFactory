@@ -24,10 +24,10 @@ Every `REQUIRED` line should say `PASS`. `skip` lines are optional (upload cooki
 ## 2. Open the UI
 
 ```powershell
-.venv\Scripts\python ui\server.py
+.\start.ps1                                   # or: .\.venv\Scripts\python.exe ui\server.py
 ```
 
-Your browser opens `http://127.0.0.1:8765`. The UI only listens on this computer. To preview on your phone over the same Wi-Fi, use `--host 0.0.0.0` and open the link the console prints (it contains the access token).
+Your browser opens `http://127.0.0.1:8765`. On the first visit a 3-step guide checks the engines and your key; **Judge Demo Mode** there shows a sample Short, Blueprint and Batch without any key. The UI only listens on this computer. To preview on your phone over the same Wi-Fi, use `--host 0.0.0.0` and open the link the console prints (it contains the access token).
 
 Six tabs:
 
@@ -40,7 +40,7 @@ Six tabs:
 | **Schedule** | Pre-Flight bar, Schedule Builder and queue cards (see [SCHEDULER.md](SCHEDULER.md)) |
 | **Settings** | Gemini key and spend limit, video defaults, one card per publishing platform, Telegram/Discord alerts, **System health** |
 
-The panel at the bottom shows the live log of whatever is running.
+The **Studio Status Pill** in the header (`● Ready · 2 Scheduled · Next upload in 45m`) opens the Activity Drawer: what is rendering now with a 5-step stepper (Script → Voice → Music+SFX → Render → QA), its live log and Cancel, what is scheduled next, and recent results. The **Stitched Engines** badge in the sidebar shows the health of every engine. The old UI is at `/classic`.
 
 ## 3. Add your Gemini key (one time)
 

@@ -129,7 +129,7 @@ Never commit `publisher/**/cookies/`. `.gitignore` excludes them; check with `gi
 | `bad host` | You opened it via a hostname other than `127.0.0.1`/`localhost`. Use `http://127.0.0.1:8765`, or start with `--host 0.0.0.0` for LAN access |
 | Phone cannot connect | Start with `--host 0.0.0.0`, open the printed link (it carries the token), and allow Python through Windows Firewall for private networks |
 | Port in use | `python ui/server.py --port 8770` |
-| A job seems stuck | The bottom log panel shows its live output; **Cancel** kills the whole process tree (Chrome + FFmpeg). Logs persist in `ui/logs/<job>.log` |
+| A job seems stuck | Open the Status Pill → Activity Drawer → **Show log** for its live output; **Cancel** kills the whole process tree (Chrome + FFmpeg). Logs persist in `ui/logs/<job>.log` |
 | Renders wait in "queued" | By design: renders, analyses and approvals run one at a time to protect GPU, RAM and Chrome |
 
 ## Language model (Gemini / Ollama / OpenAI-compatible)
@@ -173,6 +173,8 @@ Never commit `publisher/**/cookies/`. `.gitignore` excludes them; check with `gi
 
 ## Windows and OneDrive
 
+- Remotion `EPERM: operation not permitted, symlink` while bundling: OneDrive turns files in `studio/public` into cloud-file reparse points, which the bundler copies as symlinks. `pipeline/render.py` now mirrors `studio/public` to `~/.video-factory/remotion-public` when the project is inside OneDrive and renders with `--public-dir`. If a file is still downloading from OneDrive the render says so; retry in a moment.
+- The studio shows the old UI at `/`: `frontend/dist` is missing. Run `.\start.ps1` or `python scripts/bootstrap.py --frontend`.
 - `PermissionError: [WinError 32] ... being used by another process` comes from OneDrive or antivirus scanning a new file. `common.safe_replace` retries renames. If it persists, pause OneDrive sync or keep the project outside OneDrive.
 - `UnicodeEncodeError: 'charmap' codec can't encode character` came from Remotion's progress glyphs on a cp1252 console. `common` reconfigures stdout/stderr to replace unencodable characters.
 - Wikimedia `HTTP 429` on every download: Wikimedia requires a descriptive User-Agent with contact info; both fetchers send `video-factory/1.0 (https://github.com/ElwinGonsalves/video-factory; ...)`. Change it if you fork the project.

@@ -39,7 +39,8 @@ Audio is the master clock: scene start/end times in `timing.json` come from the 
 | `make_video.py` | One-command orchestrator for a project folder |
 | `common/` | Paths, hashing, JSON IO, subprocess/ffprobe helpers, CUDA DLL registration; `settings.py` for `.env` + `config/settings.json` |
 | `llm/` | `providers.py` (Gemini, Ollama, OpenAI-compatible), `tasks.py` (ideas, scripts, metadata, frame reading), `cli.py` |
-| `ui/` | `server.py` (FastAPI), `jobs.py` (subprocess jobs + logs), `static/` (HTML/CSS/JS, no build step) |
+| `ui/` | `server.py` (FastAPI), `jobs.py` (subprocess jobs + logs), `studio.py` (pill/drawer progress, engine health, demo assets), `static/` (the old UI, served at `/classic`) |
+| `frontend/` | The studio UI: Vite + React + TypeScript + Tailwind, built to `frontend/dist` and served at `/` |
 | `analyzer/` | Reference analysis, blueprints, idea generation, approval |
 | `audio_pipeline/` | TTS, word captions, music library + fallbacks, ducking + loudness, `sfx.py` |
 | `media_pipeline/` | Keyless archive fetcher, URL-hash cache, offline textures |
@@ -50,7 +51,7 @@ Audio is the master clock: scene start/end times in `timing.json` come from the 
 | `publisher/` | `publish.py`, `official_apis.py`, `post_log.py`; vendored `social-auto-upload` |
 | `scripts/` | `doctor.py`, `smoke_test.py`, `bootstrap.py`, `setup_repos.ps1/.sh`, `seed_music.py`, `install_skills.py`, `fetch_geo.py` |
 | `.agent/skills/` | 69 SKILL.md files from 12 zero-API packs |
-| `.kiro/steering/` | Rules Kiro follows; `.kiro/settings/mcp.json` (local) wires the handanim MCP server |
+| `.kiro/` | `steering/` (rules Kiro follows), `specs/studio-ui-v3/` (requirements, design, tasks), `hooks/` (UI audit, lint + test); `settings/mcp.json` (local, from `mcp.example.json`) wires the handanim MCP server |
 | `projects/<id>/` | `script.json` (committed); `assets/`, `qa/`, `props.json` (ignored) |
 | `output/<id>/` | `<id>.mp4`, `<id>.thumb.jpg`, `<id>.meta.json` (ignored). `common/paths.py` resolves them and falls back to the v1 flat layout |
 | `data/projects.db` | Library index, idea history, published URLs, analytics, Gemini token log (ignored) |
@@ -79,6 +80,17 @@ Gitignored and recreated by `python scripts/bootstrap.py`: `.venv`, `node_module
 **Scheduler guard** (`scheduler/guard.py`, `scheduler/builder.py`): keep-awake, Safe-Publish Gate (`needs_review`), pre-upload session checks with per-platform pause (`auth`, `platform_pause` tables in `state.sqlite`), and the relative-spacing builder.
 
 **Spend guard** (`llm/usage.py`): tokens per call, estimated Rs from per-model prices and a USD to INR rate, monthly stop limit that pauses batches. **Alerts** (`common/notify.py`): Telegram and Discord.
+
+## v3 studio UI
+
+`frontend/` is a React app (hash routes `#/create`, `#/ideas`, `#/batch`, `#/library`, `#/schedule`, `#/settings`). `ui/server.py` serves `frontend/dist/index.html` at `/` with the session token injected, `/assets/*` and `/styles/*` from the build, and the old UI at `/classic`. Visual rules: `DESIGN.md`. Spec: `.kiro/specs/studio-ui-v3/`.
+
+- `GET /api/studio`: one 2 s poll for the header Status Pill and the Activity Drawer: `now`, `running`, `queued`, `upcoming` slots from the schedule, `recent` jobs, `daemon`, and the 5 pipeline `nodes`. `ui/studio.py:parse_progress` maps `make_video.py`'s `[N/6]` markers and Remotion's `Rendered n/m` onto Script, Voice, Music+SFX, Render and QA.
+- `GET /api/engines?refresh=`: health of the 8 stitched engines (cached 60 s).
+- `GET /api/onboarding`: key status, engine summary and what Judge Demo Mode can show (`demo_assets()`, real files only).
+- `GET /api/demo/batch`: the sample workbook validated like an upload.
+
+Rendering inside OneDrive: `pipeline/render.py:public_dir()` mirrors `studio/public` to `~/.video-factory/remotion-public` and passes `--public-dir` (Remotion's bundler fails on OneDrive reparse points).
 
 ## Studio (Remotion)
 
