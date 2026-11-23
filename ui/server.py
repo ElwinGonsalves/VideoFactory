@@ -40,7 +40,8 @@ from scheduler import builder, guard  # noqa: E402
 from ui.jobs import JobManager  # noqa: E402
 from ui.streaming import download_file, stream_file  # noqa: E402
 
-STATIC = Path(__file__).resolve().parent / "static"
+STATIC = Path(__file__).resolve().parent / "static"  # legacy vanilla UI, served at /classic
+DIST = ROOT / "frontend" / "dist"  # the React studio app (npm run build in frontend/)
 TOKEN = secrets.token_urlsafe(24)
 FILE_ROOTS = [OUTPUT, PROJECTS, ROOT / "analyzer" / "work", ROOT / "studio" / "public" / "assets"]
 SCHEDULE = ROOT / "scheduler" / "schedule.yaml"
@@ -160,7 +161,41 @@ def index(t: str = "") -> HTMLResponse:
         return HTMLResponse(
             "<h3>video-factory: open the link printed in the console (it contains the access token).</h3>", 401
         )
+    page = DIST / "index.html" if (DIST / "index.html").exists() else STATIC / "index.html"
+    return HTMLResponse(page.read_text(encoding="utf-8").replace("__VF_TOKEN__", TOKEN))
+
+
+@app.get("/classic", response_class=HTMLResponse)
+def classic(t: str = "") -> HTMLResponse:
+    """The pre-v3 vanilla UI, kept as a fallback (owner decision)."""
+    if LAN["enabled"] and not secrets.compare_digest(t, TOKEN):
+        return HTMLResponse("<h3>video-factory: open the link printed in the console.</h3>", 401)
     return HTMLResponse((STATIC / "index.html").read_text(encoding="utf-8").replace("__VF_TOKEN__", TOKEN))
+
+
+@app.get("/assets/{name:path}")
+def dist_assets(name: str) -> FileResponse:
+    root = (DIST / "assets").resolve()
+    p = (root / name).resolve()
+    if not p.is_relative_to(root) or not p.is_file():
+        raise HTTPException(404)
+    return FileResponse(p, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+@app.get("/styles/{name}")
+def dist_style_card(name: str) -> FileResponse:
+    """Style Picker images (real Remotion frames, scripts/render_style_cards.py)."""
+    root = (DIST / "styles").resolve()
+    p = (root / name).resolve()
+    if p.parent != root or not p.is_file():
+        raise HTTPException(404)
+    return FileResponse(p, headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/favicon.svg")
+def favicon_svg() -> Response:
+    p = DIST / "favicon.svg"
+    return FileResponse(p) if p.exists() else HTMLResponse(FAVICON, media_type="image/svg+xml")
 
 
 FAVICON = (
@@ -207,6 +242,122 @@ def job_log(job_id: str, offset: int = 0) -> dict[str, Any]:
         raise HTTPException(404)
     text, new_offset = jobs.read_log(job_id, offset)
     return {"text": text, "offset": new_offset, "status": job.status, "job": job.public()}
+
+
+# ------------------------------------------------------------------ studio status (pill + drawer)
+def _upcoming(limit: int = 6) -> tuple[list[dict[str, Any]], int]:
+    """Future generation/upload slots from schedule.yaml + state.sqlite, soonest first."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from scheduler import run_scheduler as rs
+
+    sch = rs.load_schedule()
+    tz = ZoneInfo(sch["defaults"]["timezone"])
+    try:
+        with closing(rs.connect()) as conn:
+            gen = {r["id"]: r["gen_status"] for r in conn.execute("SELECT id, gen_status FROM jobs")}
+            ups: dict[str, list[str]] = {}
+            for r in conn.execute("SELECT job_id, status FROM uploads"):
+                ups.setdefault(r["job_id"], []).append(r["status"])
+    except sqlite3.OperationalError:
+        gen, ups = {}, {}
+    now = datetime.now(tz)
+    slots: list[dict[str, Any]] = []
+    scheduled = 0
+    for j in sch["jobs"]:
+        if j.get("enabled", True) is False:
+            continue
+        state = gen.get(j["id"], "pending")
+        statuses = ups.get(j["id"], [])
+        if statuses and all(s == "done" for s in statuses):
+            continue
+        scheduled += 1
+        project = Path(str(j.get("meta") or j.get("script_or_prompt") or "")).stem.removesuffix(".meta")
+        if not j.get("meta"):
+            project = Path(str(j.get("script_or_prompt") or "")).parent.name
+        base = {"job_id": j["id"], "title": _title_of(project) or j["id"], "platforms": j.get("platforms", ["youtube"])}
+        if j.get("generate_at") and state == "pending" and j.get("type") != "upload_only":
+            at = rs.parse_time(j["generate_at"], tz)
+            if at:
+                slots.append(
+                    {**base, "kind": "generate", "at": at.isoformat(), "in_sec": int((at - now).total_seconds())}
+                )
+        if j.get("upload_at") and j.get("type") != "generate_only":
+            at = rs.parse_time(j["upload_at"], tz)
+            if at:
+                held = "needs_review" in statuses
+                slots.append(
+                    {
+                        **base,
+                        "kind": "upload",
+                        "at": at.isoformat(),
+                        "in_sec": int((at - now).total_seconds()),
+                        "held": held,
+                    }
+                )
+    slots.sort(key=lambda s: s["at"])
+    return slots[:limit], scheduled
+
+
+@app.get("/api/studio")
+def studio_status() -> dict[str, Any]:
+    """One poll for the header pill and the Activity Drawer."""
+    from ui import studio
+
+    all_jobs = sorted(jobs.jobs.values(), key=lambda j: j.created, reverse=True)
+    running = [studio.job_view(j) for j in all_jobs if j.status == "running"]
+    queued = [studio.job_view(j) for j in all_jobs if j.status == "queued"]
+    recent = [studio.job_view(j) for j in all_jobs if j.status in ("done", "failed", "cancelled")][:8]
+    for r in recent:
+        r["has_video"] = bool(r["slug"]) and paths.find(r["slug"], "mp4") is not None
+    upcoming, scheduled = _upcoming()
+    proc = daemon["proc"]
+    return {
+        "now": running[0] if running else None,
+        "running": running,
+        "queued": queued,
+        "upcoming": upcoming,
+        "scheduled": scheduled,
+        "recent": recent,
+        "daemon": bool(proc and proc.poll() is None),
+        "nodes": [{"id": n, "label": studio.NODE_LABELS[n], "engine": studio.NODE_ENGINES[n]} for n in studio.NODES],
+    }
+
+
+@app.get("/api/engines")
+def engines_health(refresh: bool = False) -> dict[str, Any]:
+    from ui import studio
+
+    data = studio.engines(force=refresh)
+    return {"engines": data, **studio.engines_summary(data)}
+
+
+@app.get("/api/onboarding")
+def onboarding() -> dict[str, Any]:
+    """What the first-run modal needs: is the brain connected, what can the demo show."""
+    from ui import studio
+
+    cfg = settings.load()["llm"]
+    key = {"gemini": "GEMINI_API_KEY", "openai": "OPENAI_API_KEY"}.get(cfg["provider"])
+    return {
+        "provider": cfg["provider"],
+        "key_name": key,
+        "key_set": bool(settings.env(key)) if key else True,
+        "engines": studio.engines_summary(),
+        "projects": len([p for p in PROJECTS.glob("*/script.json") if not p.parent.name.startswith("_")]),
+        "rendered": len(paths.project_ids()),
+        "demo": studio.demo_assets(),
+    }
+
+
+@app.get("/api/demo/batch")
+def demo_batch() -> dict[str, Any]:
+    """The sample workbook's rows, validated exactly like an upload (for Judge Demo Mode)."""
+    from batch import sheet
+
+    rows = sheet.read_upload("sample.xlsx", sheet.sample_xlsx())
+    return {"raw": rows, "results": _batch_results(rows), "columns": sheet.COLUMNS, "sample": True}
 
 
 @app.post("/api/jobs/{job_id}/cancel")
