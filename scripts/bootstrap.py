@@ -2,7 +2,7 @@
 
     python scripts/bootstrap.py            # everything
     python scripts/bootstrap.py --studio   # just npm install in studio/
-    flags: --python --gpu --studio --engines --publisher --music --skills --assets --mcp
+    flags: --python --gpu --studio --frontend --engines --publisher --music --skills --assets --mcp
 
 Run it with the system Python; it creates .venv/ and installs into it.
 `scripts/setup_repos.ps1` / `scripts/setup_repos.sh` are thin wrappers for --engines --publisher.
@@ -96,6 +96,15 @@ def do_studio() -> None:
     sh([NPM, "install", "--no-audit", "--no-fund"], cwd=ROOT / "studio")
 
 
+def do_frontend() -> None:
+    """The React studio UI: install and build frontend/dist (ui/server.py serves it at /)."""
+    sh(
+        [NPM, "ci" if (ROOT / "frontend" / "package-lock.json").exists() else "install", "--no-audit", "--no-fund"],
+        cwd=ROOT / "frontend",
+    )
+    sh([NPM, "run", "build"], cwd=ROOT / "frontend")
+
+
 def do_engines() -> None:
     for dest, url in ENGINES.items():
         clone(dest, url)
@@ -163,6 +172,7 @@ def main() -> int:
         "python": do_python,
         "gpu": do_gpu,
         "studio": do_studio,
+        "frontend": do_frontend,
         "engines": do_engines,
         "publisher": do_publisher,
         "music": lambda: sh([str(VENV_PY), "scripts/seed_music.py"]),
