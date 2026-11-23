@@ -14,6 +14,60 @@ QA_POINTS = {"hook": 0.05, "early": 0.25, "mid": 0.55, "outro": 0.92}
 TRANSITIONS = ("hard_cut", "fade", "whip_pan", "paper_slide", "pen_draw")
 
 
+def _listing_has_reparse(root: Path) -> bool:
+    """True when the directory listing flags any file as a reparse point (FILE_ATTRIBUTE_REPARSE_POINT).
+
+    Read from the listing (os.scandir), like Node's readdir: opening the file with lstat can hide the
+    flag on OneDrive cloud files while the bundler still sees it.
+    """
+    stack = [root]
+    while stack:
+        with os.scandir(stack.pop()) as it:
+            for e in it:
+                attrs = getattr(e.stat(follow_symlinks=False), "st_file_attributes", 0)
+                if e.is_dir(follow_symlinks=False) and not attrs & 0x400:
+                    stack.append(Path(e.path))
+                elif attrs & 0x400:
+                    return True
+    return False
+
+
+def public_dir() -> Path:
+    """The folder Remotion bundles as `public/`.
+
+    OneDrive turns synced files into cloud-file reparse points, which Remotion's bundler copies as
+    symlinks and fails with EPERM. Inside OneDrive (or when any file under studio/public is one), mirror
+    the folder as plain files to ~/.video-factory/remotion-public and render from there.
+    """
+    src = STUDIO / "public"
+    if os.name != "nt":
+        return src
+    # Inside OneDrive the flag flips as Files-On-Demand frees space, so always mirror there.
+    if "onedrive" not in str(src).lower() and not _listing_has_reparse(src):
+        return src
+    files = [p for p in src.rglob("*") if p.is_file()]
+    # Not %LOCALAPPDATA%: Microsoft Store Python redirects writes there into its own package folder,
+    # so Node would not see them. The home folder is neither virtualized nor synced by OneDrive.
+    dest = Path.home() / ".video-factory" / "remotion-public"
+    keep: set[Path] = set()
+    for p in files:
+        target = dest / p.relative_to(src)
+        keep.add(target)
+        st = p.stat()
+        if target.exists() and target.stat().st_size == st.st_size and target.stat().st_mtime >= st.st_mtime:
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        # Read the bytes ourselves: the Windows copy API (shutil.copyfile -> CopyFile2) copies a OneDrive
+        # placeholder without its content and leaves a 0-byte file. Reading forces hydration.
+        with p.open("rb") as fin, target.open("wb") as fout:
+            shutil.copyfileobj(fin, fout, 1 << 20)
+        if target.stat().st_size != st.st_size:
+            raise RuntimeError(f"could not read {p} (OneDrive may still be downloading it); retry in a moment")
+    for stale in [p for p in dest.rglob("*") if p.is_file() and p not in keep]:
+        stale.unlink(missing_ok=True)
+    return dest
+
+
 def npx() -> str:
     return which("npx.cmd" if os.name == "nt" else "npx")
 
@@ -93,7 +147,12 @@ def render_stills_batch(jobs: list[dict[str, Any]], work_dir: Path) -> list[Path
         [{**j, "props": str(Path(j["props"]).resolve()), "output": str(Path(j["output"]).resolve())} for j in jobs],
     )
     try:
-        run_stream([which("node"), "scripts/stills.mjs", str(jobs_file)], cwd=STUDIO, quiet=True)
+        run_stream(
+            [which("node"), "scripts/stills.mjs", str(jobs_file)],
+            cwd=STUDIO,
+            quiet=True,
+            env={"VF_PUBLIC_DIR": str(public_dir())},
+        )
     finally:
         jobs_file.unlink(missing_ok=True)
     return [Path(j["output"]) for j in jobs]
@@ -144,6 +203,7 @@ def render_video(composition: str, props_file: Path, out_mp4: Path, concurrency:
         "--audio-codec=aac",
         # Without this, JPEG frames yield full-range yuvj420p; bt709 gives standard tv-range yuv420p.
         "--color-space=bt709",
+        f"--public-dir={public_dir()}",
     ]
     if concurrency:
         args.append(f"--concurrency={concurrency}")

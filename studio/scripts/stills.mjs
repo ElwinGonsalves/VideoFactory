@@ -9,7 +9,9 @@ import {fileURLToPath} from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const jobs = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-const serveUrl = await bundle({entryPoint: path.join(here, '..', 'src', 'index.ts'), publicDir: path.join(here, '..', 'public')});
+// VF_PUBLIC_DIR: a plain-file mirror of public/ when OneDrive placeholders would break the bundler (pipeline/render.py).
+const publicDir = process.env.VF_PUBLIC_DIR || path.join(here, '..', 'public');
+const serveUrl = await bundle({entryPoint: path.join(here, '..', 'src', 'index.ts'), publicDir});
 const browser = await openBrowser('chrome');
 const propsCache = new Map();
 const loadProps = (p) => {

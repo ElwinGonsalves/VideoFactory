@@ -111,12 +111,14 @@ def run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> subproce
     return res
 
 
-def run_stream(cmd: list[str], cwd: Path | None = None, quiet: bool = False) -> None:
+def run_stream(cmd: list[str], cwd: Path | None = None, quiet: bool = False, env: dict[str, str] | None = None) -> None:
     """Run a command and echo its output live (\\r progress lines included) for the UI log viewer.
 
     `quiet` echoes only every 10th progress-style line. Raises with the output tail on failure.
     """
-    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    proc = subprocess.Popen(
+        cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env={**os.environ, **env} if env else None
+    )
     assert proc.stdout is not None
     tail: list[str] = []
     buf = b""
