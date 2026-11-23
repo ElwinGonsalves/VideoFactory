@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "name": "Lint and test Python on save",
+  "description": "When a pipeline, UI server or scheduler Python file is saved, run ruff and the matching tests.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": ["**/*.py"]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A Python file changed. Run `.venv\\Scripts\\ruff.exe check <file>` and `.venv\\Scripts\\ruff.exe format --check <file>`, then the related tests in tests/ with `.venv\\Scripts\\python.exe -m pytest -q`. Tests must never touch data/projects.db or scheduler/schedule.yaml (tests/conftest.py isolates the DB). Fix failures before continuing."
+  }
+}

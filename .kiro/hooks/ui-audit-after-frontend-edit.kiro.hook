@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "name": "UI audit after frontend edits",
+  "description": "After a change under frontend/src, rebuild the studio UI and run the 4-viewport Playwright audit on port 8766.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": ["frontend/src/**/*.tsx", "frontend/src/**/*.ts", "frontend/src/**/*.css"]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A studio UI file changed. Run `npm run build` in frontend/. If a test server is running on port 8766 (never use 8765), run `.venv\\Scripts\\python.exe scripts\\ui_audit.py` and report any FAIL lines (overflow, clipped text, contrast, console or network errors). Open the screenshots for the changed page in ui/logs/ui_audit/ and fix defects before continuing. Follow .kiro/steering/studio-ui.md and DESIGN.md."
+  }
+}

@@ -32,7 +32,7 @@
 4. STOP and wait for explicit user approval of which idea(s) to generate before running audio, music, or rendering scripts. Record it with `analyze_reference.py approve --work <run> --ideas <n,...>`.
 
 ## Tools available to you
-- Web UI for the user: `python ui/server.py` (localhost only). Everything it does is also a CLI command, so you can drive the same steps directly.
+- Web UI for the user: `.\start.ps1` or `python ui/server.py` (localhost only). `/` is the React studio (`frontend/`, rules in `studio-ui.md`); `/classic` is the old UI. Everything it does is also a CLI command, so you can drive the same steps directly.
 - Language model: `python -m llm.cli write-script --prompt "..."`, `python -m llm.cli metadata --slug <slug>`. Provider and keys live in Settings (`.env`, `config/settings.json`); never print or commit keys.
 - Every script lists numeric claims in `facts_to_verify`; tell the user to check them before publishing.
 - Uploads: YouTube defaults to unlisted; daily caps are enforced for every path. Never upload without the user asking.
