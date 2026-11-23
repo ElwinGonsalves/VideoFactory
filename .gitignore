@@ -71,3 +71,5 @@ config/
 ui/logs/
 # Generated assets (recreate: python scripts/bootstrap.py --assets)
 studio/public/textures/
+# Built React UI (recreate: python scripts/bootstrap.py --frontend, or start.ps1)
+frontend/dist/

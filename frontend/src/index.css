@@ -1,0 +1,125 @@
+﻿@import 'tailwindcss';
+
+/* ------------------------------------------------------------------ fonts (self-hosted, OFL; see src/fonts/*-OFL.txt) */
+@font-face {
+  font-family: 'Big Shoulders';
+  src: url('./fonts/BigShoulders-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Work Sans';
+  src: url('./fonts/WorkSans-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Work Sans';
+  src: url('./fonts/WorkSans-Bold.ttf') format('truetype');
+  font-weight: 600 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('./fonts/JetBrainsMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+
+/* ------------------------------------------------------------------ the one global system (Film lab after midnight) */
+@theme {
+  --font-sans: 'Work Sans', system-ui, sans-serif;
+  --font-display: 'Big Shoulders', 'Arial Narrow', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* surfaces: lab glass, green-black */
+  --color-lab-950: #0a0f0c;
+  --color-lab-900: #0f1612;
+  --color-lab-850: #131c17;
+  --color-lab-800: #18231c;
+  --color-lab-700: #213027;
+  --color-lab-600: #2d4034;
+  --color-lab-500: #3e5647;
+  --color-lab-400: #618471; /* field and control edges: 3:1 on every surface */
+
+  /* text */
+  --color-bone: #ecf2e8;
+  --color-moss: #aebdaf;
+  --color-fog: #8fa192;
+
+  /* signals */
+  --color-volt: #8ef0a6; /* galvanic current: live, healthy, done */
+  --color-volt-deep: #1f5a33;
+  --color-pumpkin: #ffa64d; /* the primary action */
+  --color-pumpkin-hi: #ffbd78;
+  --color-pumpkin-ink: #1c0f02;
+  --color-ghost: #c2adff; /* scheduled */
+  --color-ghost-deep: #2c2447;
+  --color-blood: #ff8b8b; /* failure */
+  --color-blood-deep: #3d1616;
+  --color-candle: #ffd88a; /* needs attention */
+  --color-candle-deep: #3a2d0f;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --shadow-lift: 0 10px 30px -12px rgb(0 0 0 / 0.7), 0 2px 6px -2px rgb(0 0 0 / 0.5);
+  --shadow-glow: 0 0 0 1px rgb(142 240 166 / 0.35), 0 8px 28px -8px rgb(142 240 166 / 0.35);
+
+  --animate-current: current 0.9s linear infinite;
+  @keyframes current {
+    to {
+      stroke-dashoffset: -16;
+    }
+  }
+  --animate-flicker: flicker 2.6s ease-in-out infinite;
+  @keyframes flicker {
+    0%, 100% { opacity: 1; }
+    45% { opacity: 0.55; }
+    50% { opacity: 1; }
+    53% { opacity: 0.7; }
+  }
+}
+
+/* ------------------------------------------------------------------ browser surfaces carry the design too */
+html {
+  background: var(--color-lab-950);
+  color: var(--color-bone);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  scrollbar-color: var(--color-lab-600) var(--color-lab-900);
+  text-size-adjust: 100%;
+}
+@media (pointer: fine) {
+  html { overscroll-behavior: none; }
+}
+body { margin: 0; min-height: 100dvh; font-size: 1rem; line-height: 1.5; }
+::selection { background: rgb(142 240 166 / 0.3); color: var(--color-bone); }
+input, textarea { caret-color: var(--color-pumpkin); }
+:focus-visible { outline: 2px solid var(--color-pumpkin); outline-offset: 2px; }
+button, a, [role='button'], label, select, summary { touch-action: manipulation; }
+button:not(:disabled), [role='button'], summary, select, label[for] { cursor: pointer; }
+select, option {
+  background-color: var(--color-lab-850);
+  color: var(--color-bone);
+}
+h1, h2, h3 { text-wrap: balance; }
+p { text-wrap: pretty; }
+.tabular { font-variant-numeric: tabular-nums; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--color-lab-900); }
+::-webkit-scrollbar-thumb { background: var(--color-lab-600); border-radius: 999px; border: 2px solid var(--color-lab-900); }
+
+/* stitch seams: the signature move. A seam carries current only while its node works. */
+.seam-live { stroke-dasharray: 6 10; animation: var(--animate-current); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .seam-live { animation: none; }
+}
