@@ -1,21 +1,30 @@
-import {CalendarClock, CircleQuestionMark, Ellipsis, ExternalLink, Film, FlaskConical, PanelLeftClose, PanelLeftOpen, Sheet, SlidersHorizontal, Sparkles, Spline, X, type LucideIcon} from 'lucide-react';
-import {useState, type ReactNode} from 'react';
+import {Brain, Castle, CircleQuestionMark, Clapperboard, Ellipsis, ExternalLink, FlaskConical, FlaskRound, Moon, PanelLeftClose, PanelLeftOpen, Sheet, Skull, SlidersHorizontal, Sparkles, Spline, X, Zap, type LucideIcon} from 'lucide-react';
+import {useEffect, useState, type ReactNode} from 'react';
 import {href, useLocalFlag, useMedia, useRoute, type Page} from '../lib/hooks';
 import {useStudio} from '../lib/studio';
 import {StudioPill} from './Activity';
 import {EnginesBadge} from './Engines';
+import {ExorciseButton} from './Haunt';
 import {Overlay} from './Overlay';
 import {Button, cx} from './ui';
 
-export const NAV: {page: Page; label: string; icon: LucideIcon; blurb: string}[] = [
-  {page: 'create', label: 'Create', icon: Sparkles, blurb: 'Stitch a new video'},
-  {page: 'ideas', label: 'Ideas', icon: FlaskConical, blurb: 'Brainstorm and Style DNA'},
-  {page: 'batch', label: 'Batch', icon: Sheet, blurb: 'Many videos from a sheet'},
-  {page: 'library', label: 'Library', icon: Film, blurb: 'Inspect and ship'},
-  {page: 'schedule', label: 'Schedule', icon: CalendarClock, blurb: 'Overnight uploads'},
-  {page: 'settings', label: 'Settings', icon: SlidersHorizontal, blurb: 'Brain, accounts, alerts'},
+/*
+ * The rooms of the lab. Each has a monster-movie name and keeps its plain name underneath, so a first-time
+ * visitor never has to guess where "Library" went.
+ *   Frankenstein (1931): the Laboratory, the Operating Table.  Dracula (1931): the Vault.
+ *   The Others / seances: Ideas summoned from references.  Night of the Living Dead (1968): the Horde.
+ *   The Wolf Man (1941): uploads at the Witching Hour.  Hocus Pocus (1993): the Apothecary's potions.
+ */
+export const NAV: {page: Page; label: string; plain: string; short: string; icon: LucideIcon; blurb: string}[] = [
+  {page: 'create', label: 'The Laboratory', plain: 'Create', short: 'Lab', icon: FlaskConical, blurb: 'Write a new script'},
+  {page: 'render', label: 'Operating Table', plain: 'Render', short: 'Table', icon: Clapperboard, blurb: 'Bring saved scripts to life'},
+  {page: 'library', label: "Dracula's Vault", plain: 'Library', short: 'Vault', icon: Castle, blurb: 'Finished videos, ready to ship'},
+  {page: 'ideas', label: 'The Séance', plain: 'Ideas', short: 'Séance', icon: Sparkles, blurb: 'Summon ideas and Style DNA'},
+  {page: 'batch', label: 'The Horde', plain: 'Batch', short: 'Horde', icon: Sheet, blurb: 'Raise many videos from a sheet'},
+  {page: 'schedule', label: 'Witching Hour', plain: 'Schedule', short: 'Hours', icon: Moon, blurb: 'Overnight uploads'},
+  {page: 'settings', label: 'The Apothecary', plain: 'Settings', short: 'Potions', icon: SlidersHorizontal, blurb: 'Brains, voices, accounts'},
 ];
-const MOBILE_MAIN: Page[] = ['create', 'ideas', 'library', 'schedule'];
+const MOBILE_MAIN: Page[] = ['create', 'render', 'library', 'ideas'];
 
 function Logo({small}: {small?: boolean}) {
   return (
@@ -41,16 +50,21 @@ function NavLink({item, active, collapsed}: {item: (typeof NAV)[number]; active:
     <a
       href={href(item.page)}
       aria-current={active ? 'page' : undefined}
-      aria-label={collapsed ? item.label : undefined}
-      title={collapsed ? item.label : undefined}
+      aria-label={`${item.label} (${item.plain})`}
+      title={collapsed ? `${item.label} · ${item.plain}` : undefined}
       className={cx(
-        'group flex h-11 min-w-0 items-center gap-3 rounded-md border px-3 text-[0.9375rem] font-semibold transition-[background-color,border-color,color] duration-150',
+        'group flex min-h-11 min-w-0 items-center gap-3 rounded-md border px-3 py-1 text-[0.9375rem] font-semibold transition-[background-color,border-color,color] duration-150',
         collapsed && 'justify-center px-0',
         active ? 'border-lab-500 bg-lab-800 text-bone' : 'border-transparent text-moss hover:bg-lab-850 hover:text-bone',
       )}
     >
       <Icon aria-hidden className={cx('size-5 shrink-0 transition-colors', active ? 'text-pumpkin' : 'text-fog group-hover:text-moss')} />
-      {!collapsed ? <span className="truncate">{item.label}</span> : null}
+      {!collapsed ? (
+        <span className="min-w-0 leading-tight">
+          <span className="block truncate">{item.label}</span>
+          <span className="block truncate text-[0.6875rem] font-normal text-fog">{item.plain}</span>
+        </span>
+      ) : null}
     </a>
   );
 }
@@ -95,9 +109,9 @@ function BottomNav() {
           const active = route.page === n.page;
           const Icon = n.icon;
           return (
-            <a key={n.page} href={href(n.page)} aria-current={active ? 'page' : undefined} className={cx('flex h-16 flex-col items-center justify-center gap-1 text-xs font-semibold', active ? 'text-bone' : 'text-moss')}>
+            <a key={n.page} href={href(n.page)} aria-label={`${n.label} (${n.plain})`} aria-current={active ? 'page' : undefined} className={cx('flex h-16 flex-col items-center justify-center gap-1 text-xs font-semibold', active ? 'text-bone' : 'text-moss')}>
               <Icon aria-hidden className={cx('size-5', active ? 'text-pumpkin' : 'text-fog')} />
-              {n.label}
+              {n.short}
             </a>
           );
         })}
@@ -112,7 +126,7 @@ function BottomNav() {
             <a key={n.page} href={href(n.page)} onClick={() => setMore(false)} aria-current={route.page === n.page ? 'page' : undefined} className="flex min-h-12 items-center gap-3 rounded-md px-3 text-bone hover:bg-lab-850">
               <n.icon aria-hidden className="size-5 text-pumpkin" />
               <span className="min-w-0">
-                <span className="block font-semibold">{n.label}</span>
+                <span className="block font-semibold">{n.label} <span className="font-normal text-fog">· {n.plain}</span></span>
                 <span className="block text-sm text-moss">{n.blurb}</span>
               </span>
             </a>
@@ -147,10 +161,35 @@ function DemoBanner() {
   );
 }
 
-export function Shell({title, children}: {title: string; children: ReactNode}) {
+// Every room of the lab has its monster. Decorative: the h1 carries the name.
+const EMBLEMS: Record<Page, {icon: LucideIcon; who: string; className?: string}> = {
+  create: {icon: Zap, who: "Frankenstein's lab", className: 'emblem-flicker text-volt'},
+  render: {icon: Clapperboard, who: 'The operating table', className: 'text-pumpkin'},
+  ideas: {icon: Brain, who: 'The brain in the jar'},
+  batch: {icon: Skull, who: 'The horde'},
+  library: {icon: Castle, who: "Dracula's vault"},
+  schedule: {icon: Moon, who: 'Werewolf hours', className: 'text-candle'},
+  settings: {icon: FlaskRound, who: 'The potion shelf'},
+};
+
+function Emblem({page}: {page: Page}) {
+  const e = EMBLEMS[page];
+  return (
+    <span key={page} title={e.who} aria-hidden className="emblem-in hidden size-9 shrink-0 place-items-center sm:grid rounded-full border border-dashed border-lab-400 bg-lab-850 text-bone shadow-[0_0_18px_-6px_rgb(194_173_255/0.6)]">
+      <e.icon className={cx('size-[18px]', e.className)} />
+    </span>
+  );
+}
+
+export function Shell({title, page, children}: {title: string; page: Page; children: ReactNode}) {
   const tablet = useMedia('(min-width: 768px) and (max-width: 1023px)');
   const [userCollapsed, setUserCollapsed] = useLocalFlag('vf-rail');
   const collapsed = tablet || userCollapsed;
+  const desktop = useMedia('(min-width: 768px)');
+  // the sidebar's width, for overlays that sit just right of it (scroll ghost, page bolt)
+  useEffect(() => {
+    document.documentElement.style.setProperty('--vf-sb', desktop ? (collapsed ? '64px' : '240px') : '0px');
+  }, [desktop, collapsed]);
   return (
     <div className="flex min-h-dvh">
       <a href="#main" className="sr-only z-50 rounded-md bg-pumpkin px-4 py-2 font-semibold text-pumpkin-ink focus:not-sr-only focus:fixed focus:top-3 focus:left-3">Skip to content</a>
@@ -158,7 +197,12 @@ export function Shell({title, children}: {title: string; children: ReactNode}) {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-lab-700 bg-lab-950/90 px-4 backdrop-blur [padding-top:env(safe-area-inset-top)] sm:px-6">
           <span className="md:hidden"><Logo small /></span>
-          <h1 className="min-w-0 flex-1 truncate font-display text-3xl leading-none tracking-wide text-bone">{title}</h1>
+          <Emblem page={page} />
+          <h1 className="min-w-0 flex-1 font-display text-2xl leading-none tracking-wide text-bone sm:text-3xl">
+            <span className="sm:hidden">{NAV.find((n) => n.page === page)?.short ?? title}</span>
+            <span className="hidden sm:inline">{title}</span>
+          </h1>
+          <ExorciseButton />
           <StudioPill />
         </header>
         <DemoBanner />

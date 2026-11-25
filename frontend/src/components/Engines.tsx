@@ -1,8 +1,9 @@
-import {Bone, Brain, Ear, Eye, Hand, HeartPulse, Mic, RefreshCw, Spline, Stethoscope, type LucideIcon} from 'lucide-react';
+import {Bone, Brain, ChevronDown, Ear, Eye, Hand, HeartPulse, Mic, RefreshCw, Spline, Stethoscope, type LucideIcon} from 'lucide-react';
 import {useEffect} from 'react';
 import {api, type Engine, type Job} from '../lib/api';
 import {useStudio} from '../lib/studio';
 import {Overlay} from './Overlay';
+import {Transplant} from './Transplant';
 import {Badge, Button, cx} from './ui';
 
 const ORGAN_ICON: Record<string, LucideIcon> = {
@@ -94,8 +95,9 @@ export function EnginesModal() {
     <Overlay
       open={enginesOpen}
       onClose={() => setEnginesOpen(false)}
+      wide
       title="Stitched Engines"
-      description="One body, eight open-source organs. Green means the organ answered the last check."
+      description="One body stitched from open-source organs. Green means the organ answered its last check."
       footer={
         <>
           <Button variant="ghost" icon={RefreshCw} onClick={() => act(() => refreshEngines(true))}>Check again</Button>
@@ -103,10 +105,19 @@ export function EnginesModal() {
         </>
       }
     >
-      {engines ? <EngineSpine engines={engines.engines} /> : <p className="text-sm text-moss">Listening for a heartbeat…</p>}
-      <p className="mt-2 text-[0.8125rem] text-fog">
-        These are presence checks (installed, on PATH, cloned). The deep check loads Whisper on the GPU and renders nothing; results open in Studio Activity.
-      </p>
+      {enginesOpen ? <Transplant /> : null}
+      <details className="group mt-6 rounded-md border border-lab-700 px-3">
+        <summary className="flex min-h-11 list-none items-center gap-2 text-sm font-semibold text-moss hover:text-bone [&::-webkit-details-marker]:hidden">
+          <ChevronDown aria-hidden className="size-4 transition-transform group-open:rotate-180" />
+          Every organ, with versions
+        </summary>
+        <div className="pt-2 pb-3">
+          {engines ? <EngineSpine engines={engines.engines} /> : <p className="text-sm text-moss">Listening for a heartbeat…</p>}
+          <p className="mt-2 text-[0.8125rem] text-fog">
+            These are presence checks (installed, on PATH, cloned). The deep check loads Whisper on the GPU and renders nothing; results open in Studio Activity.
+          </p>
+        </div>
+      </details>
     </Overlay>
   );
 }

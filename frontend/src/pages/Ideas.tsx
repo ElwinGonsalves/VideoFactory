@@ -127,8 +127,8 @@ function IdeaCard({idea, run, sample, onChanged}: {idea: Idea; run?: string; sam
           </div>
           <blockquote className="mt-3 border-l-0 text-[0.9375rem] text-bone">“{f.hook}”</blockquote>
           {f.hook_visual ? <p className="mt-1 flex items-start gap-1.5 text-sm text-moss"><Eye aria-hidden className="mt-0.5 size-4 shrink-0 text-fog" />{f.hook_visual}</p> : null}
-          <p className="mt-3 text-sm text-moss line-clamp-2">{f.angle}</p>
-          <p className="mt-1 text-sm text-moss line-clamp-2"><span className="font-semibold text-bone">Case:</span> {f.case_study}</p>
+          <p title={f.angle} className="mt-3 text-sm text-moss line-clamp-2">{f.angle}</p>
+          <p title={`Case: ${f.case_study}`} className="mt-1 text-sm text-moss line-clamp-2"><span className="font-semibold text-bone">Case:</span> {f.case_study}</p>
         </>
       )}
       <div className="mt-3 flex flex-wrap gap-1.5">

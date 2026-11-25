@@ -1,16 +1,19 @@
-import {ArrowDown, ArrowUp, Check, ChevronDown, Clapperboard, FileText, FlaskConical, Plus, Save, ScrollText, Sparkles, Trash, Wand} from 'lucide-react';
-import {useEffect, useId, useMemo, useState} from 'react';
-import {api, type Job, type Onboarding, type Options, type ProjectRow, type Script} from '../lib/api';
+import {Check, ChevronDown, FlaskConical, ScrollText, Sparkles, Wand} from 'lucide-react';
+import {useEffect, useId, useState} from 'react';
+import {AUTO_VOICE, GhostVoice, LengthPicker, NarratorFields} from '../components/Narrator';
+import {Shelf} from '../components/Shelf';
+import {Button, Check as CheckBox, Field, Input, LinkButton, Notice, Panel, Segmented, Select, Skeleton, SpecimenTag, Textarea, cx} from '../components/ui';
+import {api, type Job, type Onboarding, type Options, type ProjectRow} from '../lib/api';
 import {platformName, titleCase} from '../lib/format';
-import {href, navigate, useApi, useRoute} from '../lib/hooks';
+import {href, navigate, useApi} from '../lib/hooks';
 import {slugFromJobLog, useStudio} from '../lib/studio';
 import {STYLE_INFO, styleImage, styleInfo} from '../lib/styles';
-import {Badge, Button, Check as CheckBox, EmptyState, Field, Input, LinkButton, Notice, Panel, Segmented, Select, Skeleton, SpecimenTag, Textarea, cx} from '../components/ui';
 
-function StyleCard({id, selected, onPick, beats, name}: {id: string; selected: boolean; onPick: () => void; beats?: string; name: string}) {
+function StyleCard({id, selected, onPick, beats, name, line, voice, language}: {id: string; selected: boolean; onPick: () => void; beats?: string; name: string; line: string; voice: string; language: string}) {
   const info = styleInfo(id);
   return (
-    <label className={cx('group relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-lg border bg-lab-850 transition-[border-color,box-shadow,transform] duration-200 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-pumpkin', selected ? 'border-pumpkin shadow-[0_0_0_1px_var(--color-pumpkin),0_10px_30px_-12px_rgb(255_166_77/0.55)]' : 'border-lab-600 hover:-translate-y-0.5 hover:border-lab-400')}>
+    <div className="relative min-w-0">
+    <label className={cx('group relative flex h-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-lg border bg-lab-850 transition-[border-color,box-shadow,transform] duration-200 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-pumpkin', selected ? 'border-pumpkin shadow-[0_0_0_1px_var(--color-pumpkin),0_10px_30px_-12px_rgb(255_166_77/0.55)]' : 'border-lab-600 hover:-translate-y-0.5 hover:border-lab-400')}>
       <input type="radio" name={name} value={id} checked={selected} onChange={onPick} className="sr-only" />
       <div className="relative aspect-[4/5] overflow-hidden bg-lab-950">
         <img src={styleImage(id)} alt="" width={270} height={480} loading="lazy" className="absolute inset-0 size-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.03]" />
@@ -27,10 +30,12 @@ function StyleCard({id, selected, onPick, beats, name}: {id: string; selected: b
         {beats ? <span title={beats} className="mt-auto pt-1 text-xs leading-snug text-fog line-clamp-2">{beats}</span> : null}
       </div>
     </label>
+    <GhostVoice style={id} language={language} voice={voice} line={line} className="absolute top-2 left-2" />
+    </div>
   );
 }
 
-function StylePicker({styles, value, onChange, templates}: {styles: string[]; value: string; onChange: (s: string) => void; templates: Options['templates']}) {
+function StylePicker({styles, value, onChange, templates, line, voice, language}: {styles: string[]; value: string; onChange: (s: string) => void; templates: Options['templates']; line: string; voice: string; language: string}) {
   const name = useId();
   const featured = styles.filter((s) => STYLE_INFO[s]?.featured);
   const rest = styles.filter((s) => !STYLE_INFO[s]?.featured);
@@ -40,7 +45,7 @@ function StylePicker({styles, value, onChange, templates}: {styles: string[]; va
     <fieldset className="min-w-0">
       <legend className="mb-2 text-sm font-semibold text-bone">Style</legend>
       <div role="radiogroup" aria-label="Video style" className="grid grid-cols-2 gap-3 @lg:grid-cols-3 @5xl:grid-cols-6">
-        {featured.map((s) => <StyleCard key={s} id={s} name={name} selected={value === s} onPick={() => onChange(s)} beats={beatsOf(s)} />)}
+        {featured.map((s) => <StyleCard key={s} id={s} name={name} selected={value === s} onPick={() => onChange(s)} beats={beatsOf(s)} line={line} voice={voice} language={language} />)}
       </div>
       <button type="button" aria-expanded={more} onClick={() => setMore(!more)} className="mt-3 flex min-h-10 items-center gap-1.5 text-sm font-semibold text-moss hover:text-bone">
         <ChevronDown aria-hidden className={cx('size-4 transition-transform', more && 'rotate-180')} />
@@ -83,11 +88,13 @@ function NewVideo({opts, onWritten}: {opts: Options; onWritten: (slug: string) =
   const [mood, setMood] = useState(String(d.music_mood ?? 'documentary'));
   const [duration, setDuration] = useState(Number(d.target_duration_sec ?? 50));
   const [platforms, setPlatforms] = useState<string[]>(['youtube']);
+  const [language, setLanguage] = useState(String(d.language ?? 'english').toLowerCase() in {english: 1, hinglish: 1, hindi: 1} ? String(d.language ?? 'english').toLowerCase() : 'english');
+  const [voice, setVoice] = useState(AUTO_VOICE);
   const [ground, setGround] = useState(opts.grounding !== false);
   const [overwrite, setOverwrite] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const ids = {prompt: useId(), script: useId(), title: useId(), aspect: useId(), mood: useId(), duration: useId()};
+  const ids = {prompt: useId(), script: useId(), title: useId(), aspect: useId(), mood: useId()};
   const forced = opts.templates[style]?.family === 'long_form' ? '16:9' : null;
   useEffect(() => {
     if (forced) setAspect(forced);
@@ -102,13 +109,13 @@ function NewVideo({opts, onWritten}: {opts: Options; onWritten: (slug: string) =
       if (mode === 'script' && words < 8) return setErr('Paste a script of at least a couple of sentences.');
       setBusy(true);
       try {
-        const body = {mode, title: title.trim(), style, aspect, mood, duration, platforms, overwrite, grounding: ground, ...(mode === 'idea' ? {prompt: prompt.trim()} : {script: scriptText.trim()})};
+        const body = {mode, title: title.trim(), style, aspect, mood, duration, platforms, overwrite, grounding: ground, language, ...(voice ? {voice} : {}), ...(mode === 'idea' ? {prompt: prompt.trim()} : {script: scriptText.trim()})};
         const job = await api<Job>('/api/projects/write', {method: 'POST', body});
         watch(job, mode === 'script' ? 'Splitting your script' : 'Writing the script', async (s) => {
           setBusy(false);
           if (s !== 'done') return toast('Script writing failed. Open Studio Activity for the log.', 'err');
           const slug = await slugFromJobLog(job.id).catch(() => null);
-          toast('Script stitched together. Review the scenes, then render.', 'ok');
+          toast('Script stitched together and saved. It is waiting on the Operating Table.', 'ok');
           if (slug) onWritten(slug);
         });
       } catch (e) {
@@ -144,7 +151,8 @@ function NewVideo({opts, onWritten}: {opts: Options; onWritten: (slug: string) =
             <Textarea id={ids.script} name="script" rows={7} autoGrow value={scriptText} onChange={(e) => setScriptText(e.target.value)} placeholder="Paste the full narration…" />
           </Field>
         )}
-        <StylePicker styles={opts.styles} value={style} onChange={setStyle} templates={opts.templates} />
+        <NarratorFields opts={opts} style={style} language={language} setLanguage={setLanguage} voice={voice} setVoice={setVoice} line={mode === 'script' ? scriptText : ''} />
+        <StylePicker styles={opts.styles} value={style} onChange={setStyle} templates={opts.templates} line={mode === 'script' ? scriptText : ''} voice={voice} language={language} />
         <div className="grid gap-4 @lg:grid-cols-2 @4xl:grid-cols-4">
           <Field label="Video title" htmlFor={ids.title} optional hint="Becomes the folder name." className="@lg:col-span-2 @4xl:col-span-1">
             <Input id={ids.title} name="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="AI suggests one…" />
@@ -159,12 +167,8 @@ function NewVideo({opts, onWritten}: {opts: Options; onWritten: (slug: string) =
               {opts.moods.map((m) => <option key={m} value={m}>{titleCase(m)}</option>)}
             </Select>
           </Field>
-          {mode === 'idea' ? (
-            <Field label="Length (seconds)" htmlFor={ids.duration}>
-              <Input id={ids.duration} type="number" inputMode="numeric" min={15} max={1800} value={duration} onChange={(e) => setDuration(Number(e.target.value))} />
-            </Field>
-          ) : null}
         </div>
+        {mode === 'idea' ? <LengthPicker value={duration} onChange={setDuration} longForm={opts.templates[style]?.family === 'long_form'} aspect={aspect} /> : null}
         <fieldset>
           <legend className="mb-1 text-sm font-semibold text-bone">Platforms</legend>
           <div className="flex flex-wrap gap-x-4">
@@ -197,217 +201,14 @@ function NewVideo({opts, onWritten}: {opts: Options; onWritten: (slug: string) =
   );
 }
 
-// ------------------------------------------------------------------ projects list
-function Projects({rows, loading, current}: {rows: ProjectRow[] | null; loading: boolean; current: string}) {
-  return (
-    <Panel id="projects" title="Projects" description="Scripts on the slab, newest first.">
-      {loading && !rows ? (
-        <div className="flex flex-col gap-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-16" />)}</div>
-      ) : rows && rows.length ? (
-        <ul className="flex flex-col gap-2">
-          {rows.map((p) => (
-            <li key={p.slug}>
-              <a href={href('create', {project: p.slug})} aria-current={current === p.slug ? 'true' : undefined} className={cx('flex min-w-0 items-center gap-3 rounded-md border p-2.5 transition-colors', current === p.slug ? 'border-pumpkin bg-lab-800' : 'border-lab-700 bg-lab-850 hover:border-lab-500')}>
-                <img src={styleImage(p.style)} alt="" width={36} height={48} loading="lazy" className="h-12 w-9 shrink-0 rounded-sm bg-lab-950 object-cover object-top p-0.5 ring-1 ring-lab-500" />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold leading-snug text-bone [overflow-wrap:anywhere]">{p.title || p.slug}</span>
-                  <span className="block text-xs text-fog">{[styleInfo(p.style).name, p.aspect_ratio, `${p.scenes} scenes`].filter(Boolean).join(' · ')}</span>
-                  {p.needs_approval ? <Badge tone="candle" className="mt-1.5">Approve idea first</Badge> : p.rendered ? <Badge tone="volt" className="mt-1.5">Rendered</Badge> : null}
-                </span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <EmptyState art={<FileText aria-hidden className="size-8 text-fog" />} title="The slab is empty">
-          Write your first script on the left, or brainstorm one in Ideas.
-        </EmptyState>
-      )}
-    </Panel>
-  );
-}
-
-// ------------------------------------------------------------------ scene editor
-function Editor({slug, opts, onSaved}: {slug: string; opts: Options; onSaved: () => void}) {
-  const {act, watch, toast} = useStudio();
-  const [script, setScript] = useState<Script | null>(null);
-  const [dirty, setDirty] = useState(false);
-  const [safe, setSafe] = useState(false);
-  const [strict, setStrict] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [json, setJson] = useState('');
-  const [jsonErr, setJsonErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    let live = true;
-    void act(async () => {
-      const s = await api<Script>(`/api/projects/${encodeURIComponent(slug)}`);
-      if (live) {
-        setScript(s);
-        setDirty(false);
-        setJson(JSON.stringify(s, null, 2));
-      }
-    });
-    return () => {
-      live = false;
-    };
-  }, [slug, act]);
-  useEffect(() => {
-    if (!dirty) return;
-    const on = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener('beforeunload', on);
-    return () => window.removeEventListener('beforeunload', on);
-  }, [dirty]);
-
-  const update = (next: Script) => {
-    setScript(next);
-    setJson(JSON.stringify(next, null, 2));
-    setDirty(true);
-  };
-  const scenes = script?.scenes ?? [];
-  const setScene = (i: number, patch: Partial<Script['scenes'][number]>, visual?: Record<string, unknown>) => {
-    if (!script) return;
-    const copy = scenes.map((s, j) => (j === i ? {...s, ...patch, visual: visual ? {...(s.visual ?? {}), ...visual} : s.visual} : s));
-    update({...script, scenes: copy});
-  };
-  const move = (i: number, j: number) => {
-    if (!script || j < 0 || j >= scenes.length) return;
-    const copy = [...scenes];
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-    update({...script, scenes: copy});
-  };
-  const save = async () => {
-    if (!script) return;
-    const empty = scenes.findIndex((s) => !String(s.narration ?? '').trim());
-    if (empty >= 0) throw new Error(`Scene ${empty + 1} has no narration. Write it or delete the scene.`);
-    await api(`/api/projects/${encodeURIComponent(slug)}`, {method: 'PUT', body: script});
-    setDirty(false);
-    onSaved();
-  };
-  const render = () =>
-    act(async () => {
-      setBusy(true);
-      try {
-        await save();
-        const job = await api<Job>(`/api/projects/${encodeURIComponent(slug)}/render`, {method: 'POST', body: {safe_zones: safe, strict_qa: strict}});
-        watch(job, `Rendering ${script?.title ?? slug}`, (s) => {
-          setBusy(false);
-          if (s === 'done') {
-            toast('It’s alive! Your video is in the Library.', 'ok');
-            navigate('library', {item: slug});
-          } else toast('The render failed. Studio Activity has the log.', 'err');
-        });
-      } catch (e) {
-        setBusy(false);
-        throw e;
-      }
-    });
-
-  if (!script) return <Skeleton className="h-64" />;
-  const claims = script.claims ?? [];
-  const facts = claims.length ? claims.filter((c) => !c.verified).map((c) => c.text) : script.facts_to_verify ?? [];
-  return (
-    <Panel
-      id="editor"
-      title={<span className="[overflow-wrap:anywhere]">{script.title || slug}</span>}
-      description={<>{styleInfo(String(script.style ?? '')).name} · {script.aspect_ratio} · {scenes.length} scenes {dirty ? <Badge tone="candle" className="ml-1">Unsaved</Badge> : null}</>}
-      action={
-        <div className="flex flex-wrap gap-2">
-          <Button icon={Save} disabled={!dirty} onClick={() => act(async () => { await save(); toast('Saved.', 'ok'); })}>Save</Button>
-          <Button variant="primary" icon={Clapperboard} loading={busy} onClick={render}>Render</Button>
-        </div>
-      }
-    >
-      {facts.length ? (
-        <div className="mb-4">
-          <Notice tone="candle" title={`${facts.length} unverified fact${facts.length === 1 ? '' : 's'}`}>
-            <p>{script.grounded ? 'Checked against web sources; these still need you.' : 'Not web-checked (free tier).'} The Safe-Publish Gate holds uploads until you approve them.</p>
-            <ul className="mt-1 list-disc pl-5">{facts.slice(0, 6).map((f) => <li key={f}>{f}</li>)}</ul>
-          </Notice>
-        </div>
-      ) : null}
-      {script.sources?.length ? (
-        <p className="mb-4 text-sm text-moss">
-          Sources:{' '}
-          {script.sources.map((s, i) => (
-            <span key={s.url}>
-              {i ? ' · ' : ''}
-              <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-pumpkin underline underline-offset-4">{s.title}</a>
-            </span>
-          ))}
-        </p>
-      ) : null}
-      <ol className="flex flex-col gap-3">
-        {scenes.map((s, i) => (
-          <li key={i} className="rounded-md border border-lab-700 bg-lab-850 p-3">
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <span className="font-display text-xl leading-none text-pumpkin tabular">{String(i + 1).padStart(2, '0')}</span>
-              {s.beat ? <SpecimenTag>{s.beat}</SpecimenTag> : null}
-              <label className="sr-only" htmlFor={`vt-${i}`}>Scene {i + 1} visual type</label>
-              <Select id={`vt-${i}`} value={String(s.visual?.type ?? 'headline')} onChange={(e) => setScene(i, {}, {type: e.target.value})} className="!h-8 w-auto text-sm">
-                {opts.visual_types.map((t) => <option key={t} value={t}>{titleCase(t)}</option>)}
-              </Select>
-              <span className="ml-auto flex gap-1">
-                <Button size="sm" variant="ghost" icon={ArrowUp} aria-label={`Move scene ${i + 1} up`} disabled={i === 0} onClick={() => move(i, i - 1)} />
-                <Button size="sm" variant="ghost" icon={ArrowDown} aria-label={`Move scene ${i + 1} down`} disabled={i === scenes.length - 1} onClick={() => move(i, i + 1)} />
-                <Button size="sm" variant="ghost" icon={Trash} aria-label={`Delete scene ${i + 1}`} disabled={scenes.length <= 1} onClick={() => script && update({...script, scenes: scenes.filter((_, j) => j !== i)})} />
-              </span>
-            </div>
-            <label className="sr-only" htmlFor={`nar-${i}`}>Scene {i + 1} narration</label>
-            <Textarea id={`nar-${i}`} autoGrow rows={2} value={String(s.narration ?? '')} onChange={(e) => setScene(i, {narration: e.target.value})} placeholder="What the voice says…" />
-            <label className="mt-2 block text-xs font-semibold text-moss" htmlFor={`hd-${i}`}>On-screen heading</label>
-            <Input id={`hd-${i}`} className="mt-1" value={String(s.visual?.heading ?? '')} onChange={(e) => setScene(i, {}, {heading: e.target.value})} placeholder="Short headline…" />
-          </li>
-        ))}
-      </ol>
-      <div className="mt-3 flex flex-wrap items-center gap-x-4">
-        <Button icon={Plus} onClick={() => update({...script, scenes: [...scenes, {beat: 'other', narration: '', visual: {type: 'headline', heading: ''}}]})}>Add Scene</Button>
-        <CheckBox label="Draw safe-zone overlay" checked={safe} onChange={setSafe} />
-        <CheckBox label="Stop if visual QA fails" checked={strict} onChange={setStrict} />
-      </div>
-      <details className="group mt-4 rounded-md border border-lab-700 px-3">
-        <summary className="flex min-h-11 list-none items-center gap-2 text-sm font-semibold text-moss hover:text-bone [&::-webkit-details-marker]:hidden">
-          <ChevronDown aria-hidden className="size-4 transition-transform group-open:rotate-180" />
-          Raw script.json
-        </summary>
-        <label className="sr-only" htmlFor="raw-json">Raw script JSON</label>
-        <Textarea
-          id="raw-json"
-          rows={14}
-          spellCheck={false}
-          className="mb-3 font-mono text-xs"
-          value={json}
-          onChange={(e) => {
-            setJson(e.target.value);
-            try {
-              setScript(JSON.parse(e.target.value) as Script);
-              setDirty(true);
-              setJsonErr(null);
-            } catch {
-              setJsonErr('Not valid JSON yet; keep typing.');
-            }
-          }}
-        />
-        {jsonErr ? <p className="mb-3 text-sm text-candle">{jsonErr}</p> : null}
-      </details>
-    </Panel>
-  );
-}
-
 export default function Create() {
-  const route = useRoute();
   const opts = useApi<Options>('/api/options');
   const projects = useApi<ProjectRow[]>('/api/projects');
-  const current = route.params.get('project') ?? '';
-  const sorted = useMemo(() => projects.data ?? null, [projects.data]);
   if (opts.error) return <Notice tone="blood" title={opts.error.message}>{opts.error.hint}</Notice>;
   return (
-    <div className="flex flex-col gap-6">
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-        {opts.data ? <NewVideo opts={opts.data} onWritten={(slug) => { void projects.reload(); navigate('create', {project: slug}); }} /> : <Skeleton className="h-[560px]" />}
-        <Projects rows={sorted} loading={projects.loading} current={current} />
-      </div>
-      {current && opts.data ? <Editor key={current} slug={current} opts={opts.data} onSaved={() => void projects.reload()} /> : null}
+    <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+      {opts.data ? <NewVideo opts={opts.data} onWritten={(slug) => { void projects.reload(); navigate('render', {project: slug}); }} /> : <Skeleton className="h-[560px]" />}
+      <Shelf rows={projects.data ?? null} loading={projects.loading} />
     </div>
   );
 }

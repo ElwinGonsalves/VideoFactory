@@ -107,12 +107,22 @@ export type Options = {
   visual_types: string[];
   templates: Record<string, Template>;
   grounding: boolean;
+  languages: Language[];
+  voices: Voice[];
+  style_narrators: Record<string, {voice: string; line: string}>;
+  default_line: string;
+  language_lines: Record<string, string>;
 };
+export type Language = {id: string; label: string; default_voice: string};
+export type Voice = {id: string; name: string; engine: string; lang: string; about: string};
 
 export type Onboarding = {
   provider: string;
   key_name: string | null;
   key_set: boolean;
+  brains: Record<string, boolean>;
+  voices: Record<string, boolean>;
+  voice_engine: string;
   engines: {alive: number; total: number; required_ok: boolean};
   projects: number;
   rendered: number;
@@ -128,7 +138,7 @@ export type Blueprint = {
   beat_template?: {beat: string; pct_duration: number; visual_role?: string}[];
 };
 
-export type ProjectRow = {slug: string; title: string; style: string; aspect_ratio: string; scenes: number; rendered: boolean; needs_approval: boolean};
+export type ProjectRow = {slug: string; title: string; style: string; aspect_ratio: string; scenes: number; rendered: boolean; needs_approval: boolean; language: string; voice: string; duration_sec: number; mtime: number; published: boolean; stage: 'script' | 'rendered' | 'published'};
 
 export type Scene = {beat?: string; narration: string; visual?: {type?: string; heading?: string; [k: string]: unknown}; [k: string]: unknown};
 export type Claim = {text: string; verified: boolean; sources?: string[]};

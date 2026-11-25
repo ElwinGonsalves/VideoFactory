@@ -31,13 +31,15 @@ from playwright.sync_api import Error as PwError
 from playwright.sync_api import sync_playwright
 
 VIEWS = {"mobile": (375, 812), "tablet": (768, 1024), "laptop": (1280, 800), "desktop": (1440, 900)}
-PAGES = ["create", "ideas", "batch", "library", "schedule", "settings"]
+PAGES = ["create", "render", "ideas", "batch", "library", "schedule", "settings"]
 
 MEASURE = r"""
 () => {
   const vw = document.documentElement.clientWidth;
   const out = {scrollW: document.documentElement.scrollWidth, vw, overflow: [], clipped: [], wrapped: [], targets: [], unnamed: [], contrast: []};
   const visible = (el) => {
+    // decorative effects (coffin lids, ghosts, bolts) are aria-hidden and animate through clipping on purpose
+    if (el.closest('[aria-hidden="true"]')) return false;
     // checkVisibility also covers closed <details> content (content-visibility: hidden in Chromium).
     if (el.checkVisibility && !el.checkVisibility({checkOpacity: true, checkVisibilityCSS: true, contentVisibilityAuto: true})) return false;
     const cs = getComputedStyle(el);

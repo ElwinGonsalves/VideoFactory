@@ -66,11 +66,11 @@ export function StudioPill() {
       className="group flex h-10 min-w-0 max-w-full items-center gap-2.5 rounded-full border border-lab-600 bg-lab-900 pr-4 pl-3 text-sm transition-[border-color,box-shadow] duration-200 hover:border-volt/60 hover:shadow-glow"
     >
       <span aria-hidden className={cx('size-2.5 shrink-0 rounded-full', dot)} />
-      <span className="hidden min-w-0 items-baseline gap-2 md:flex">
+      <span className="hidden min-w-0 items-baseline gap-2 xl:flex">
         <span className="max-w-[22ch] truncate font-semibold text-bone">{main}</span>
         {detail ? <span className="truncate text-moss tabular">· {detail}</span> : null}
       </span>
-      <span className="truncate font-semibold text-bone tabular md:hidden">{short}</span>
+      <span className="truncate font-semibold text-bone tabular xl:hidden">{short}</span>
       <Zap aria-hidden className="size-4 shrink-0 text-fog transition-colors group-hover:text-volt" />
     </button>
   );

@@ -3,7 +3,7 @@ import {ApiError, api} from './api';
 
 // ------------------------------------------------------------------ hash routing: #/library?item=x
 export type Route = {page: string; sub: string; params: URLSearchParams};
-export const PAGES = ['create', 'ideas', 'batch', 'library', 'schedule', 'settings'] as const;
+export const PAGES = ['create', 'render', 'ideas', 'batch', 'library', 'schedule', 'settings'] as const;
 export type Page = (typeof PAGES)[number];
 
 function parse(): Route {
@@ -22,9 +22,14 @@ const snapshot = () => {
   return cache.route;
 };
 export const useRoute = () => useSyncExternalStore(subscribe, snapshot);
-export function navigate(page: string, params?: Record<string, string>, sub = '') {
+/** The page in the address bar right now (not the possibly stale route a fading-out page rendered with). */
+export const currentPage = () => parse().page;
+/** Go to a page. `replace` swaps the current history entry (for automatic selections), so Back still works. */
+export function navigate(page: string, params?: Record<string, string>, sub = '', {replace = false} = {}) {
   const q = params ? new URLSearchParams(params).toString() : '';
-  window.location.hash = `/${page}${sub ? `/${sub}` : ''}${q ? `?${q}` : ''}`;
+  const hash = `#/${page}${sub ? `/${sub}` : ''}${q ? `?${q}` : ''}`;
+  if (replace) window.location.replace(hash);
+  else window.location.hash = hash;
 }
 export const href = (page: string, params?: Record<string, string>) =>
   `#/${page}${params ? `?${new URLSearchParams(params).toString()}` : ''}`;

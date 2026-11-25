@@ -1,5 +1,6 @@
 import {createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode} from 'react';
 import {ApiError, api, type Engines, type Job, type Studio} from './api';
+import {haunt} from '../components/Haunt';
 import {useLocalFlag, usePoll} from './hooks';
 
 type ToastKind = 'ok' | 'err' | 'info';
@@ -44,6 +45,7 @@ export function StudioProvider({children}: {children: ReactNode}) {
   const [demo, setDemo] = useLocalFlag('vf-demo');
   const [focusJob, setFocusJob] = useState<string | null>(null);
   const waiters = useRef(new Map<string, Done>());
+  const running = useRef(new Set<string>());
   const seq = useRef(0);
 
   const dismissToast = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
@@ -73,6 +75,10 @@ export function StudioProvider({children}: {children: ReactNode}) {
       const s = await api<Studio>('/api/studio');
       setStudio(s);
       setOffline(null);
+      // A render we saw running is now done: the creature lives ("It's alive!" in Haunt.tsx).
+      const was = running.current;
+      running.current = new Set(s.running.filter((j) => j.pipeline).map((j) => j.id));
+      if (s.recent.some((j) => was.has(j.id) && j.status === 'done' && j.kind !== 'llm')) haunt('alive');
       const all = [...s.recent, ...s.running, ...s.queued];
       for (const [id, cb] of waiters.current) {
         const j = all.find((x) => x.id === id);

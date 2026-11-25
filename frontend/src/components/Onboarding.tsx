@@ -5,6 +5,7 @@ import {navigate, useLocalFlag} from '../lib/hooks';
 import {useStudio} from '../lib/studio';
 import {EngineSpine} from './Engines';
 import {Overlay} from './Overlay';
+import {haunt} from './Haunt';
 import {Button, Field, Input, Notice, cx} from './ui';
 
 const STEPS = ['Meet the creature', 'Give it a brain', 'First spark'];
@@ -29,6 +30,11 @@ export function OnboardingModal() {
     setOnboardingOpen(false);
     setStep(0);
   };
+  // Finishing the guide (not skipping it) releases the bats, once the modal has gone.
+  const finish = () => {
+    close();
+    window.setTimeout(() => haunt('bats'), 180);
+  };
   const saveKey = () =>
     act(async () => {
       if (!key.trim()) throw new Error('Paste your Gemini API key first.');
@@ -50,13 +56,14 @@ export function OnboardingModal() {
     setOnboardingOpen(false);
     toast('Judge Demo Mode on. Samples are loaded; no API key needed.', 'ok');
     navigate('library', info?.demo.sample_short ? {item: info.demo.sample_short} : undefined);
+    window.setTimeout(() => haunt('bats'), 180);
   };
 
   const footer = (
     <>
       <span className="mr-auto text-xs text-fog tabular">Step {step + 1} of 3</span>
       {step > 0 ? <Button variant="ghost" onClick={() => setStep(step - 1)}>Back</Button> : <Button variant="ghost" onClick={close}>Skip setup</Button>}
-      {step < 2 ? <Button data-autofocus variant="primary" onClick={() => setStep(step + 1)}>{step === 1 && !info?.key_set ? 'Continue without a key' : 'Next'}</Button> : <Button data-autofocus variant="primary" onClick={close}>Enter the lab</Button>}
+      {step < 2 ? <Button data-autofocus variant="primary" onClick={() => setStep(step + 1)}>{step === 1 && !info?.key_set ? 'Continue without a key' : 'Next'}</Button> : <Button data-autofocus variant="primary" onClick={finish}>Enter the lab</Button>}
     </>
   );
 

@@ -43,3 +43,5 @@ const PLATFORM_NAMES: Record<string, string> = {youtube: 'YouTube', instagram: '
 export const platformName = (p: string) => PLATFORM_NAMES[p] ?? titleCase(p);
 
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/** Only http(s) URLs from scripts or the database become links; anything else (javascript:, data:) is dropped. */
+export const safeHref = (u: string | null | undefined) => (u && /^https?:\/\//i.test(u.trim()) ? u.trim() : undefined);

@@ -2,6 +2,7 @@ import {AnimatePresence, motion} from 'framer-motion';
 import {lazy, Suspense, useEffect} from 'react';
 import {ActivityDrawer} from './components/Activity';
 import {EnginesModal} from './components/Engines';
+import {Haunt} from './components/Haunt';
 import {OnboardingModal} from './components/Onboarding';
 import {NAV, Shell} from './components/Shell';
 import {Toasts} from './components/Toasts';
@@ -16,6 +17,7 @@ const PAGES = {
   library: lazy(() => import('./pages/Library')),
   schedule: lazy(() => import('./pages/Schedule')),
   settings: lazy(() => import('./pages/Settings')),
+  render: lazy(() => import('./pages/Render')),
 };
 
 function Routed() {
@@ -23,12 +25,12 @@ function Routed() {
   const reduce = useReducedMotion();
   const page = route.page as keyof typeof PAGES;
   const Page = PAGES[page];
-  const title = NAV.find((n) => n.page === page)?.label ?? 'Create';
+  const title = NAV.find((n) => n.page === page)?.label ?? 'The Laboratory';
   useEffect(() => {
     document.title = `${title} · video-factory`;
   }, [title]);
   return (
-    <Shell title={title}>
+    <Shell title={title} page={page in PAGES ? page : 'create'}>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={page} initial={reduce ? false : {opacity: 0, y: 6}} animate={{opacity: 1, y: 0}} exit={reduce ? undefined : {opacity: 0}} transition={{duration: 0.16, ease: [0.16, 1, 0.3, 1]}}>
           <Suspense fallback={<Skeleton className="h-96" />}>
@@ -48,6 +50,7 @@ export default function App() {
       <EnginesModal />
       <OnboardingModal />
       <Toasts />
+      <Haunt />
     </StudioProvider>
   );
 }

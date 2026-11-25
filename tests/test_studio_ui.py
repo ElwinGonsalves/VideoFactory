@@ -104,6 +104,27 @@ def test_demo_batch_validates_sample_rows(client: TestClient) -> None:
 
 
 # ------------------------------------------------------------------ shell routes
+@pytest.mark.parametrize("params", [{"text": "hi"}, {"text": "hello there", "voice": "../../etc"}])
+def test_voice_preview_validates_before_speaking(client: TestClient, params: dict) -> None:
+    assert client.get("/api/voice/preview", params=params, headers=H).status_code == 400
+
+
+def test_voice_preview_serves_cached_audio(client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import hashlib
+
+    monkeypatch.setattr(server, "VOICE_CACHE", tmp_path)
+    text, voice = "Ever wondered why?", "en-US-AndrewNeural"
+    (tmp_path / f"{hashlib.sha1(f'{voice}|{text}'.encode()).hexdigest()[:20]}.mp3").write_bytes(b"ID3fake")
+    res = client.get("/api/voice/preview", params={"text": text, "voice": voice}, headers=H)
+    assert res.status_code == 200 and res.headers["content-type"] == "audio/mpeg" and res.content == b"ID3fake"
+
+
+def test_onboarding_lists_transplant_donors(client: TestClient) -> None:
+    body = client.get("/api/onboarding", headers=H).json()
+    assert {"gemini", "groq", "openrouter", "ollama"} <= set(body["brains"])
+    assert set(body["voices"]) == {"edge-tts", "kokoro"} and body["voice_engine"]
+
+
 def test_classic_ui_is_kept(client: TestClient) -> None:
     res = client.get("/classic")
     assert res.status_code == 200 and "__VF_TOKEN__" not in res.text and server.TOKEN in res.text

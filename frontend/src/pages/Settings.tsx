@@ -1,6 +1,7 @@
-import {Bell, Brain, CircleQuestionMark, ExternalLink, Film, KeyRound, LineChart, LogIn, Radio, Save, ShieldCheck, Stethoscope, TestTube, Upload, Users} from 'lucide-react';
+import {Bell, Brain, CircleQuestionMark, ExternalLink, Film, Ghost, KeyRound, LineChart, LogIn, Radio, Save, ShieldCheck, Stethoscope, TestTube, Upload, Users, Zap} from 'lucide-react';
 import {useEffect, useId, useState, type ReactNode} from 'react';
-import {Badge, Button, Check, Field, Input, LinkButton, Notice, Panel, Segmented, Select, Skeleton, cx} from '../components/ui';
+import {Badge, Button, Check, Field, Input, LinkButton, Notice, Panel, Segmented, Select, Skeleton, Switch, cx} from '../components/ui';
+import {haunt, useHaunted} from '../components/Haunt';
 import {api, type Job, type Options} from '../lib/api';
 import {fmtNumber, platformName, titleCase} from '../lib/format';
 import {href, useApi, useRoute} from '../lib/hooks';
@@ -62,7 +63,15 @@ function ModelSection({s, reload}: {s: SettingsData; reload: () => void}) {
   const {act, watch, toast} = useStudio();
   const llm = s.prefs.llm;
   const [provider, setProvider] = useState(String(llm.provider));
-  const [models, setModels] = useState({gemini_model: String(llm.gemini_model ?? ''), ollama_model: String(llm.ollama_model ?? ''), openai_model: String(llm.openai_model ?? '')});
+  const [models, setModels] = useState({
+    gemini_model: String(llm.gemini_model ?? ''),
+    ollama_model: String(llm.ollama_model ?? ''),
+    openai_model: String(llm.openai_model ?? ''),
+    groq_model: String(llm.groq_model ?? 'llama-3.3-70b-versatile'),
+    openrouter_model: String(llm.openrouter_model ?? 'meta-llama/llama-3.3-70b-instruct:free'),
+  });
+  const backups = ((llm.fallback_providers as unknown as string[] | undefined) ?? ['groq', 'openrouter', 'gemini']).filter((p) => p !== provider);
+  const listable = provider === 'gemini' || provider === 'groq' || provider === 'openrouter';
   const sec = useSecrets();
   const usage = useApi<Usage>('/api/usage');
   const [spend, setSpend] = useState({tier: 'free', limit: 100, rate: 85, pin: 0, pout: 0});
@@ -71,11 +80,11 @@ function ModelSection({s, reload}: {s: SettingsData; reload: () => void}) {
     const p = usage.data.prices[models.gemini_model] ?? Object.values(usage.data.prices)[0] ?? {input: 0, output: 0};
     setSpend({tier: usage.data.tier, limit: usage.data.limit_inr, rate: usage.data.usd_inr, pin: p.input, pout: p.output});
   }, [usage.data, models.gemini_model]);
-  const ids = {prov: useId(), gm: useId(), om: useId(), oam: useId(), limit: useId(), rate: useId(), pin: useId(), pout: useId()};
+  const ids = {prov: useId(), gm: useId(), om: useId(), oam: useId(), gq: useId(), orm: useId(), limit: useId(), rate: useId(), pin: useId(), pout: useId()};
   const save = () =>
     act(async () => {
       await api('/api/settings/prefs', {method: 'PUT', body: {llm: {provider, ...models}}});
-      await sec.save(['GEMINI_API_KEY', 'OLLAMA_HOST', 'OPENAI_BASE_URL', 'OPENAI_API_KEY']);
+      await sec.save(['GEMINI_API_KEY', 'OLLAMA_HOST', 'OPENAI_BASE_URL', 'OPENAI_API_KEY', 'GROQ_API_KEY', 'OPENROUTER_API_KEY']);
       toast('Brain settings saved. Keys stay in your local .env.', 'ok');
       reload();
     });
@@ -93,6 +102,8 @@ function ModelSection({s, reload}: {s: SettingsData; reload: () => void}) {
         <Field label="Provider" htmlFor={ids.prov}>
           <Select id={ids.prov} value={provider} onChange={(e) => setProvider(e.target.value)}>
             <option value="gemini">Gemini (free tier, default)</option>
+            <option value="groq">Groq (free tier, very fast)</option>
+            <option value="openrouter">OpenRouter (free models)</option>
             <option value="ollama">Ollama (offline on this PC)</option>
             <option value="openai">OpenAI-compatible endpoint</option>
           </Select>
@@ -101,6 +112,16 @@ function ModelSection({s, reload}: {s: SettingsData; reload: () => void}) {
           <div className="grid gap-4 md:grid-cols-2">
             <Secret name="GEMINI_API_KEY" label="Gemini API key" env={s.env} value={sec.vals.GEMINI_API_KEY ?? ''} onChange={sec.set('GEMINI_API_KEY')} hint={<>Free at <a className="text-pumpkin underline underline-offset-4" href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">aistudio.google.com</a></>} />
             <Field label="Model" htmlFor={ids.gm}><Input id={ids.gm} spellCheck={false} value={models.gemini_model} onChange={(e) => setModels({...models, gemini_model: e.target.value})} /></Field>
+          </div>
+        ) : provider === 'groq' ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Secret name="GROQ_API_KEY" label="Groq API key" env={s.env} value={sec.vals.GROQ_API_KEY ?? ''} onChange={sec.set('GROQ_API_KEY')} hint={<>Free at <a className="text-pumpkin underline underline-offset-4" href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">console.groq.com/keys</a></>} />
+            <Field label="Model" htmlFor={ids.gq} hint="e.g. llama-3.3-70b-versatile. List Models shows what your key can use."><Input id={ids.gq} spellCheck={false} value={models.groq_model} onChange={(e) => setModels({...models, groq_model: e.target.value})} /></Field>
+          </div>
+        ) : provider === 'openrouter' ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Secret name="OPENROUTER_API_KEY" label="OpenRouter API key" env={s.env} value={sec.vals.OPENROUTER_API_KEY ?? ''} onChange={sec.set('OPENROUTER_API_KEY')} hint={<>Free at <a className="text-pumpkin underline underline-offset-4" href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener noreferrer">openrouter.ai/settings/keys</a></>} />
+            <Field label="Model" htmlFor={ids.orm} hint="Free models end in :free. List Models shows them."><Input id={ids.orm} spellCheck={false} value={models.openrouter_model} onChange={(e) => setModels({...models, openrouter_model: e.target.value})} /></Field>
           </div>
         ) : provider === 'ollama' ? (
           <div className="grid gap-4 md:grid-cols-2">
@@ -117,7 +138,18 @@ function ModelSection({s, reload}: {s: SettingsData; reload: () => void}) {
         <div className="flex flex-wrap gap-2">
           <Button variant="primary" icon={Save} onClick={save}>Save Brain Settings</Button>
           <Button icon={TestTube} onClick={() => act(async () => watch(await api<Job>('/api/settings/test-llm', {method: 'POST'}), 'Testing the language model'))}>Test Connection</Button>
-          {provider === 'gemini' ? <Button variant="ghost" onClick={() => act(async () => watch(await api<Job>('/api/settings/gemini-models', {method: 'POST'}), 'Listing Gemini models'))}>List Gemini Models</Button> : null}
+          {listable ? <Button variant="ghost" onClick={() => act(async () => watch(await api<Job>(`/api/settings/models/${provider}`, {method: 'POST'}), `Listing ${titleCase(provider)} models`))}>List Models</Button> : null}
+        </div>
+
+        <div className="rounded-lg border border-dashed border-lab-500 p-4">
+          <h3 className="font-semibold text-bone">Backup brains</h3>
+          <p className="mt-1 text-sm text-moss">
+            If the brain above fails (rejected key, used-up quota, outage), the lab tries {backups.map(titleCase).join(', then ')}, skipping any without a saved key. Groq and OpenRouter both have free tiers.
+          </p>
+          <div className="mt-3 grid gap-4 md:grid-cols-2">
+            {provider !== 'groq' ? <Secret name="GROQ_API_KEY" label="Groq API key" env={s.env} value={sec.vals.GROQ_API_KEY ?? ''} onChange={sec.set('GROQ_API_KEY')} hint="console.groq.com/keys" /> : null}
+            {provider !== 'openrouter' ? <Secret name="OPENROUTER_API_KEY" label="OpenRouter API key" env={s.env} value={sec.vals.OPENROUTER_API_KEY ?? ''} onChange={sec.set('OPENROUTER_API_KEY')} hint="openrouter.ai/settings/keys" /> : null}
+          </div>
         </div>
 
         <div className="mt-2 border-t border-lab-700 pt-5">
@@ -299,6 +331,7 @@ function AnalyticsSection({s}: {s: SettingsData}) {
 
 function SystemSection() {
   const {act, watch, setOnboardingOpen, setEnginesOpen} = useStudio();
+  const fx = useHaunted();
   return (
     <Panel id="system" title="System" description="Health checks and the way back to the old UI.">
       <div className="flex flex-wrap gap-2">
@@ -309,6 +342,15 @@ function SystemSection() {
         <LinkButton href="/classic" variant="ghost" icon={ExternalLink}>Classic UI</LinkButton>
       </div>
       <p className="mt-3 text-[0.8125rem] text-fog">Results open in Studio Activity. Keep this project outside OneDrive for reliable renders (see docs/DEBUGGING.md).</p>
+      <div className="mt-5 border-t border-lab-700 pt-4">
+        <Switch label="Haunted effects" hint={fx.reduce ? 'Your system asks for reduced motion, so bats, ghosts and lightning stay still.' : 'Bats, click ghosts, the scroll ghost, candle light, fog and the "It\'s alive!" strike.'} checked={fx.on} onChange={fx.setOn} />
+        {fx.motion ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" variant="ghost" icon={Ghost} onClick={() => haunt('bats')}>Release the bats</Button>
+            <Button size="sm" variant="ghost" icon={Zap} onClick={() => haunt('alive')}>Strike lightning</Button>
+          </div>
+        ) : null}
+      </div>
     </Panel>
   );
 }

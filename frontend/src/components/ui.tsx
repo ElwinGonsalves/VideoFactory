@@ -23,6 +23,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={type}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
+      data-variant={variant}
       className={cx(
         'inline-flex shrink-0 items-center justify-center gap-2 rounded-md font-semibold whitespace-nowrap transition-[background-color,border-color,color,box-shadow,transform] duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none',
         size === 'md' ? 'h-10 px-4 text-sm pointer-coarse:h-11' : 'h-8 px-3 text-[0.8125rem] pointer-coarse:h-10',
@@ -45,6 +46,7 @@ export function LinkButton({href, variant = 'secondary', size = 'md', icon: Icon
       download={download === true ? '' : download || undefined}
       target={external ? '_blank' : undefined}
       rel={external ? 'noopener noreferrer' : undefined}
+      data-variant={variant}
       className={cx(
         'inline-flex shrink-0 items-center justify-center gap-2 rounded-md font-semibold whitespace-nowrap transition-[background-color,border-color,color] duration-150',
         size === 'md' ? 'h-10 px-4 text-sm pointer-coarse:h-11' : 'h-8 px-3 text-[0.8125rem] pointer-coarse:h-10',

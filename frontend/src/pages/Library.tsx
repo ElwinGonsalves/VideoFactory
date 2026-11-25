@@ -1,15 +1,16 @@
 import {ArrowLeft, BarChart3, CalendarClock, CircleX, ChevronLeft, ChevronRight, Clapperboard, Download, ExternalLink, Film, Link2, RefreshCw, Save, Search, Send, ShieldCheck, Wand} from 'lucide-react';
-import {useEffect, useId, useMemo, useState} from 'react';
+import {useCallback, useEffect, useId, useMemo, useState} from 'react';
 import {Overlay} from '../components/Overlay';
 import {Badge, Button, Check, EmptyState, Field, Input, LinkButton, Notice, Panel, Select, Skeleton, SpecimenTag, Textarea, cx} from '../components/ui';
 import {api, fileUrl, withToken, type Job, type LibraryItem, type LibraryPage, type Onboarding} from '../lib/api';
-import {fmtDate, fmtNumber} from '../lib/format';
-import {href, navigate, useApi, useMedia, useRoute} from '../lib/hooks';
+import {fmtDate, fmtNumber, safeHref} from '../lib/format';
+import {useHaunted} from '../components/Haunt';
+import {currentPage, href, navigate, useApi, useMedia, useRoute} from '../lib/hooks';
 import {useStudio} from '../lib/studio';
 import {styleInfo} from '../lib/styles';
 
 // ------------------------------------------------------------------ list
-function List({selected, onPicked, autoPick}: {selected: string; onPicked: (slug: string) => void; autoPick?: boolean}) {
+function List({selected, onPicked, onAutoPick}: {selected: string; onPicked: (slug: string) => void; onAutoPick?: (slug: string) => void}) {
   const {act, watch} = useStudio();
   const [q, setQ] = useState('');
   const [qd, setQd] = useState('');
@@ -27,8 +28,8 @@ function List({selected, onPicked, autoPick}: {selected: string; onPicked: (slug
   const path = `/api/library?${new URLSearchParams({q: qd, style, aspect, page: String(page), per_page: '10'})}`;
   const {data, loading, error} = useApi<LibraryPage>(path);
   useEffect(() => {
-    if (autoPick && !selected && data?.items[0]) onPicked(data.items[0].slug);
-  }, [data, selected, onPicked, autoPick]);
+    if (onAutoPick && !selected && data?.items[0]) onAutoPick(data.items[0].slug);
+  }, [data, selected, onAutoPick]);
   const sync = () => act(async () => watch(await api<Job>('/api/analytics/sync', {method: 'POST'}), 'Syncing views and likes'));
   return (
     <Panel id="lib-list" title="The vault" description={data ? `${data.total} video${data.total === 1 ? '' : 's'}, newest first` : 'Finished creatures'} action={<Button size="sm" variant="ghost" icon={BarChart3} onClick={sync}>Sync Analytics</Button>} className="lg:sticky lg:top-20">
@@ -63,16 +64,17 @@ function List({selected, onPicked, autoPick}: {selected: string; onPicked: (slug
           <ul className="flex flex-col gap-2">
             {data.items.map((v) => (
               <li key={v.slug}>
-                <a href={href('library', {item: v.slug})} onClick={(e) => { e.preventDefault(); onPicked(v.slug); }} aria-current={selected === v.slug ? 'true' : undefined} className={cx('flex min-w-0 items-start gap-3 rounded-md border p-2.5 transition-colors', selected === v.slug ? 'border-pumpkin bg-lab-800' : 'border-lab-700 bg-lab-850 hover:border-lab-500')}>
+                <a href={href('library', {item: v.slug})} onClick={(e) => { e.preventDefault(); onPicked(v.slug); }} aria-current={selected === v.slug ? 'true' : undefined} className={cx('relative flex min-w-0 items-start gap-3 overflow-hidden rounded-md border p-2.5 transition-colors', selected === v.slug ? 'border-pumpkin bg-lab-800' : 'border-lab-700 bg-lab-850 hover:border-lab-500')}>
                   <Film aria-hidden className={cx('mt-0.5 size-5 shrink-0', selected === v.slug ? 'text-pumpkin' : 'text-fog')} />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold leading-snug text-bone [overflow-wrap:anywhere] line-clamp-2">{v.title}</span>
+                    <span className={cx('block text-sm font-semibold leading-snug text-bone [overflow-wrap:anywhere] line-clamp-2', v.qa_ok === false && 'pr-[4.5rem]')}>{v.title}</span>
                     <span className="block text-xs text-fog">{[v.style && styleInfo(v.style).name, v.aspect_ratio, fmtDate(v.mtime * 1000)].filter(Boolean).join(' · ')}</span>
                     <span className="mt-1.5 flex flex-wrap gap-1.5">
                       <Badge tone={v.qa_ok === false ? 'blood' : v.qa_ok ? 'volt' : 'neutral'}>{v.qa_ok == null ? 'QA n/a' : v.qa_ok ? 'QA pass' : 'QA issues'}</Badge>
                       {v.unverified ? <Badge tone="candle">{v.unverified} to verify</Badge> : null}
                     </span>
                   </span>
+                  {v.qa_ok === false ? <span aria-hidden className="cursed-stamp pointer-events-none absolute top-2 right-2 rounded-sm border-2 border-blood/80 bg-lab-950/70 px-1.5 font-display text-sm leading-tight tracking-widest text-blood">CURSED</span> : null}
                 </a>
               </li>
             ))}
@@ -194,6 +196,7 @@ function PublishDialog({item, open, onClose, facts}: {item: LibraryItem; open: b
 }
 
 function Inspector({slug, onBack}: {slug: string; onBack?: () => void}) {
+  const fx = useHaunted();
   const {act, watch, toast} = useStudio();
   const {data: item, error, loading, reload} = useApi<LibraryItem>(`/api/library/${encodeURIComponent(slug)}`, [slug]);
   const [meta, setMeta] = useState({title: '', description: '', hashtags: '', tags: ''});
@@ -230,6 +233,9 @@ function Inspector({slug, onBack}: {slug: string; onBack?: () => void}) {
     <div className="flex min-w-0 flex-col gap-6">
       {onBack ? <Button variant="ghost" icon={ArrowLeft} onClick={onBack} className="self-start">All videos</Button> : null}
       <Panel id="inspector">
+        <div className="relative">
+        {/* Dracula's vault: the coffin lids swing open on each video you pick (decorative; off in a calm lab) */}
+        {fx.motion ? (<div key={item.slug} aria-hidden className="vault-open pointer-events-none absolute -inset-3 z-10 overflow-hidden rounded-2xl"><span className="vault-lining" /><span className="coffin-lid coffin-lid-l"><i className="lid-cross" /></span><span className="coffin-lid coffin-lid-r"><i className="lid-plate">R.I.P.</i></span><span className="vault-dust" /></div>) : null}
         <div className="grid gap-6 @[760px]:grid-cols-[300px_minmax(0,1fr)]">
           <div className={item.aspect_ratio === '16:9' ? '@[760px]:col-span-2' : ''}><Player item={item} /></div>
           <div className="flex min-w-0 flex-col gap-4">
@@ -258,7 +264,7 @@ function Inspector({slug, onBack}: {slug: string; onBack?: () => void}) {
               <Notice tone="volt" title="Every numeric claim was verified against a cited source" />
             ) : null}
             {item.sources.length ? (
-              <p className="text-sm text-moss">Sources: {item.sources.map((s, i) => <span key={s.url}>{i ? ' · ' : ''}<a className="text-pumpkin underline underline-offset-4" href={s.url} target="_blank" rel="noopener noreferrer">{s.title}</a></span>)}</p>
+              <p className="text-sm text-moss">Sources: {item.sources.map((s, i) => <span key={s.url}>{i ? ' · ' : ''}<a className="text-pumpkin underline underline-offset-4" href={safeHref(s.url)} target="_blank" rel="noopener noreferrer">{s.title}</a></span>)}</p>
             ) : null}
             <div>
               <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-bone"><ShieldCheck aria-hidden className="size-4 text-volt" />QA frames</h3>
@@ -266,6 +272,7 @@ function Inspector({slug, onBack}: {slug: string; onBack?: () => void}) {
               {issues.length ? <ul className="mt-2 text-sm text-blood">{issues.map((i) => <li key={i}>{i}</li>)}</ul> : null}
             </div>
           </div>
+        </div>
         </div>
       </Panel>
 
@@ -288,7 +295,7 @@ function Inspector({slug, onBack}: {slug: string; onBack?: () => void}) {
               <Input id={ids.u} type="url" inputMode="url" spellCheck={false} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://youtube.com/shorts/…" />
             </Field>
             <Button icon={Link2} onClick={saveUrl} className="sm:mb-[1.6rem]">Save Link</Button>
-            {item.published_url ? <LinkButton href={item.published_url} external variant="ghost" icon={ExternalLink} className="sm:mb-[1.6rem]">Open</LinkButton> : null}
+            {safeHref(item.published_url) ? <LinkButton href={safeHref(item.published_url)!} external variant="ghost" icon={ExternalLink} className="sm:mb-[1.6rem]">Open</LinkButton> : null}
           </div>
         </div>
       </Panel>
@@ -310,16 +317,23 @@ export default function Library() {
   const wide = useMedia('(min-width: 1024px)');
   const onboarding = useApi<Onboarding>(demo ? '/api/onboarding' : null);
   const item = route.params.get('item') ?? '';
+  // After a nav click this page keeps rendering during its fade-out, with the *new* route (no ?item=).
+  // Automatic selections must only run while Library really is the current page, or they drag the user
+  // back here. They also replace the history entry, so Back is not trapped.
+  const here = route.page === 'library';
   const pick = (slug: string) => navigate('library', {item: slug});
+  const autoPick = useCallback((slug: string) => {
+    if (currentPage() === 'library') navigate('library', {item: slug}, '', {replace: true});
+  }, []);
   useEffect(() => {
-    if (demo && !item && onboarding.data?.demo.sample_short) pick(onboarding.data.demo.sample_short);
-  }, [demo, item, onboarding.data]);
+    if (here && demo && !item && onboarding.data?.demo.sample_short) autoPick(onboarding.data.demo.sample_short);
+  }, [here, demo, item, onboarding.data, autoPick]);
   if (!wide) {
     return item ? <Inspector slug={item} onBack={() => navigate('library')} /> : <List selected="" onPicked={(s) => pick(s)} />;
   }
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
-      <List selected={item} onPicked={pick} autoPick />
+      <List selected={item} onPicked={pick} onAutoPick={here ? autoPick : undefined} />
       {item ? <Inspector slug={item} /> : <EmptyState title="Pick a video" art={<Film aria-hidden className="size-8 text-fog" />}>Choose one on the left to inspect it.</EmptyState>}
     </div>
   );

@@ -1,8 +1,9 @@
 import {AudioLines, Check, Clapperboard, Mic, ScanSearch, ScrollText, X, type LucideIcon} from 'lucide-react';
+import {useEffect, useRef, useState} from 'react';
 import {cx} from './ui';
 
 export const NODE_META: {id: string; label: string; engine: string; icon: LucideIcon}[] = [
-  {id: 'script', label: 'Script', engine: 'Gemini / Ollama', icon: ScrollText},
+  {id: 'script', label: 'Script', engine: 'Gemini / Groq', icon: ScrollText},
   {id: 'voice', label: 'Voice', engine: 'Edge-TTS · Whisper', icon: Mic},
   {id: 'music', label: 'Music+\u200bSFX', engine: 'FFmpeg', icon: AudioLines},
   {id: 'render', label: 'Render', engine: 'Remotion', icon: Clapperboard},
@@ -24,6 +25,20 @@ export function StitchStepper({activeIndex, failed, finished, compact}: {activeI
     return 'pending';
   };
   const current = activeIndex == null ? null : NODE_META[Math.min(activeIndex, 4)];
+  // organs that finished since the last render flash once ("node-zap")
+  const doneCount = finished ? 5 : activeIndex ?? 0;
+  const prevDone = useRef(doneCount);
+  const [zapped, setZapped] = useState<number[]>([]);
+  useEffect(() => {
+    if (doneCount > prevDone.current) {
+      const fresh = Array.from({length: doneCount - prevDone.current}, (_, k) => prevDone.current + k);
+      setZapped(fresh);
+      const t = window.setTimeout(() => setZapped([]), 800);
+      prevDone.current = doneCount;
+      return () => window.clearTimeout(t);
+    }
+    prevDone.current = doneCount;
+  }, [doneCount]);
   return (
     <div>
       <ol className="grid grid-cols-5" aria-label="Pipeline stages">
@@ -48,6 +63,11 @@ export function StitchStepper({activeIndex, failed, finished, compact}: {activeI
                   />
                 </svg>
               ) : null}
+              {into === 'active' ? (
+                <span aria-hidden className="absolute top-0 right-1/2 h-10 w-full">
+                  <span className="seam-spark" />
+                </span>
+              ) : null}
               <span
                 className={cx(
                   'relative z-10 grid size-10 place-items-center rounded-full border-2 transition-[background-color,border-color,box-shadow] duration-300',
@@ -58,6 +78,7 @@ export function StitchStepper({activeIndex, failed, finished, compact}: {activeI
                 )}
               >
                 <Icon aria-hidden className={cx('size-[18px]', s === 'active' && 'animate-flicker')} />
+                {zapped.includes(i) ? <span aria-hidden className="node-zap" /> : null}
               </span>
               <span className={cx('mt-1.5 w-full px-0.5 text-xs leading-tight font-semibold', s === 'pending' ? 'text-fog' : 'text-bone')}>{n.label}</span>
               {!compact ? <span className="mt-0.5 hidden w-full px-0.5 text-xs leading-tight text-fog min-[400px]:block">{n.engine}</span> : null}
