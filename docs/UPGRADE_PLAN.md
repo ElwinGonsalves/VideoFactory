@@ -70,10 +70,16 @@ atomically per section (`feat(ui): ...`, `feat(batch): ...`, ...).
 - Render: `make_video.py`, `pipeline/{render,qa,thumbnail,router}.py`, `studio/src/**`, `studio/scripts/stills.mjs`.
 - Audio: `audio_pipeline/{make_voice_and_subs,mix_music_and_sfx,sfx}.py` (SFX are synthesized into `audio_pipeline/sfx_library/*.wav`, which is gitignored today; v2 adds a committed `manifest.json`).
 - Scheduler/publisher: `scheduler/run_scheduler.py` (`state.sqlite`: jobs/uploads/events/posts), `publisher/{publish,official_apis,post_log}.py`.
-- Tests: `tests/` (37 passing). Checks: `scripts/doctor.py`, `scripts/smoke_test.py`.
+- Tests: `tests/` (158 passing). Checks: `scripts/doctor.py`, `scripts/smoke_test.py`.
 
 ## Status after implementation
 - Done: all nine sections. Verified with `scripts/doctor.py`, `scripts/smoke_test.py`, `ruff check` / `ruff format --check`, `pytest` and `npx tsc --noEmit`.
 - Not verified here (needs your accounts or a long unattended run): real Google Search grounding on a paid key, Instagram/TikTok official API calls, Telegram/Discord delivery, a real overnight batch, and the Windows keep-awake effect over hours.
 - `ui/static` is exercised through the API and syntax checks, not a browser test run.
 - Follow-ups worth considering: move the project outside OneDrive; per-aspect outputs (re-rendering 16:9 or 9:16 replaces the current file).
+
+### Completion pass
+Each section has its own commit: §1 cbf7b06, §2 5114700, §3 ebed535, §4 0d2d1db, §5 cd9cc41, §6 e5e3062, §7 72dc97c, §8 7fc8cb5, §9 38f140d. The v3 React studio (`frontend/`, 0f7994c) carries the v2 UI features over.
+- §6 addition: `scripts/migrate_output.py --root <repo>` migrates another checkout's `output/`, `data/projects.db` and scheduler state; it exits 2 when `<repo>/output` is missing.
+- Nav order: kept the v3 order (Create, Library, Ideas, Batch, Schedule, Settings) by owner decision. The v3 redesign supersedes §1's order.
+- Done checks in the worktree: `scripts/doctor.py` all required checks passed; `scripts/smoke_test.py` PASSED (visual QA pass, 5 frames); `ruff check` all passed and `ruff format --check` 99 files formatted; `pytest` 158 passed; `npx tsc --noEmit` clean in `frontend/` and `studio/`.

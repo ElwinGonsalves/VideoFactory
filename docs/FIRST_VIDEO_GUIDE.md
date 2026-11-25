@@ -96,7 +96,7 @@ In **Schedule**, tick the videos (by title), choose the first upload (*Now*, *To
 
 ## Unattended notes
 - Keep the project **outside OneDrive** (for example `C:\dev\video-factory`). OneDrive locks files during renders and SQLite writes.
-- Upgrading from v1: back up, then `python scripts\migrate_output.py --dry-run` and `python scripts\migrate_output.py` to move `output\<slug>.*` into `output\<slug>\`.
+- Upgrading from v1: back up, then `python scripts\migrate_output.py --dry-run` and `python scripts\migrate_output.py` to move `output\<slug>.*` into `output\<slug>\`. To migrate a different checkout, add `--root <repo>` (for example `python scripts\migrate_output.py --root C:\path\to\video-factory --dry-run`).
 
 ## If something breaks
 

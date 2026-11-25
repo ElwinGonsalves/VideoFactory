@@ -73,7 +73,7 @@ Gitignored and recreated by `python scripts/bootstrap.py`: `.venv`, `node_module
 
 **SFX.** `audio_pipeline/sfx_library/manifest.json` maps `whoosh`, `pop`, `paper_flip`, `chalk_draw`, `riser` (and the other clips) to locally synthesized CC0 WAVs with a measured peak. Cue level is the voice peak minus 12 dB, on scene cuts, reveals (stat, counter, chart, map, timeline, cutout, sketch, diagram) and a riser before the first case-study/turning-point scene.
 
-**Storage.** Files live in `output/<id>/`; `data/projects.db` is the index (`projects`, `published`, `analytics`, `llm_usage`). The Library API is paginated (`GET /api/library?q=&style=&aspect=&page=`), one project at a time in the Inspector (`GET /api/library/<id>`), `GET /api/projects/<id>/stream` serves HTTP 206 and `GET /api/projects/<id>/download` is an attachment. `scripts/migrate_output.py` moves v1 files.
+**Storage.** Files live in `output/<id>/`; `data/projects.db` is the index (`projects`, `published`, `analytics`, `llm_usage`). The Library API is paginated (`GET /api/library?q=&style=&aspect=&page=`), one project at a time in the Inspector (`GET /api/library/<id>`), `GET /api/projects/<id>/stream` serves HTTP 206 and `GET /api/projects/<id>/download` is an attachment. `scripts/migrate_output.py [--root <repo>]` moves v1 files (safe to rerun).
 
 **Errors and CORS.** Every API failure is `{detail, hint}`. CORS allows only `http://127.0.0.1:<port>` and `http://localhost:<port>`; the token is still required. The page times requests out (30 s, uploads 120 s) and turns network errors into "Server not reachable" messages.
 
