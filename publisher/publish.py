@@ -39,9 +39,16 @@ def sau_python() -> str:
     return str(exe)
 
 
+SHIM = Path(__file__).resolve().parent / "sau_shim"  # sitecustomize: real Chrome UA for headless sessions
+
+
+def _sau_env() -> dict[str, str]:
+    path = os.pathsep.join(p for p in (str(SHIM), os.environ.get("PYTHONPATH", "")) if p)
+    return {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1", "PYTHONPATH": path}
+
+
 def _sau(args: list[str]) -> int:
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
-    return subprocess.run([sau_python(), "sau_cli.py", *args], cwd=SAU, env=env).returncode
+    return subprocess.run([sau_python(), "sau_cli.py", *args], cwd=SAU, env=_sau_env()).returncode
 
 
 def _tiktok(action: str, account: str, meta: dict[str, Any] | None = None) -> int:
@@ -61,7 +68,7 @@ def _tiktok(action: str, account: str, meta: dict[str, Any] | None = None) -> in
         "    print('valid' if ok else 'invalid'); sys.exit(0 if ok else 1)\n"
     )
     extra = [json.dumps(meta)] if meta else []
-    return subprocess.run([sau_python(), "-c", code, *extra], cwd=SAU).returncode
+    return subprocess.run([sau_python(), "-c", code, *extra], cwd=SAU, env=_sau_env()).returncode
 
 
 def login(platform: str, account: str) -> int:
