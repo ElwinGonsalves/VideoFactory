@@ -9,7 +9,8 @@ import {useStudio} from '../lib/studio';
  *   - Bat burst: once, when the setup guide is finished (haunt('bats')).
  *   - It's alive!: a lightning strike when a render finishes (haunt('alive')).
  *   - Click zaps: forked sparks burst from primary buttons; other buttons get a volt ring.
- *   - Scroll ghosts: one drifts diagonally with your scroll, two circle; the header wand exorcises them.
+ *   - Scroll ghosts: now and then (random chance, cooldown, minimum scroll) a ghost drifts along a random
+ *     diagonal, sometimes with company; they fade when scrolling stops. Frequency: Apothecary > System.
  *   - Page bolt: a lightning strike into the page when you switch sections.
  *   - Candle light follows the pointer across the lab floor; fog drifts along the bottom.
  * Everything is pointer-events:none, aria-hidden, off under prefers-reduced-motion (except the
@@ -261,6 +262,46 @@ export function ExorciseButton() {
   );
 }
 
+export type GhostFreq = 'rare' | 'sometimes' | 'always' | 'off';
+const FREQ_KEY = 'vf-ghost-freq';
+/** How often scroll ghosts may appear. Rare by default: a visit, not a swarm. */
+const FREQ: Record<GhostFreq, {chance: number; cooldown: [number, number]; minScroll: number}> = {
+  rare: {chance: 0.3, cooldown: [45_000, 90_000], minScroll: 700},
+  sometimes: {chance: 0.6, cooldown: [15_000, 35_000], minScroll: 450},
+  always: {chance: 1, cooldown: [0, 0], minScroll: 120},
+  off: {chance: 0, cooldown: [0, 0], minScroll: Infinity},
+};
+export function useGhostFreq(): [GhostFreq, (v: GhostFreq) => void] {
+  const read = () => {
+    const v = (typeof localStorage !== 'undefined' && localStorage.getItem(FREQ_KEY)) || 'rare';
+    return (v in FREQ ? v : 'rare') as GhostFreq;
+  };
+  const [v, setV] = useState<GhostFreq>(read);
+  useEffect(() => {
+    const on = () => setV(read());
+    window.addEventListener('vf-ghost-freq', on);
+    return () => window.removeEventListener('vf-ghost-freq', on);
+  }, []);
+  return [v, (next: GhostFreq) => {
+    localStorage.setItem(FREQ_KEY, next);
+    window.dispatchEvent(new Event('vf-ghost-freq'));
+  }];
+}
+
+/** A haunting: picked fresh each time ghosts appear, so no two visits look alike. */
+type Path4 = 'tl-br' | 'tr-bl' | 'bl-tr' | 'br-tl';
+type Haunting = {path: Path4; count: number; size: number; opacity: number; sway: number};
+const newHaunting = (forceAll = false): Haunting => {
+  const r = Math.random();
+  return {
+    path: (['tl-br', 'tr-bl', 'bl-tr', 'br-tl'] as const)[Math.floor(Math.random() * 4)],
+    count: forceAll ? 3 : r < 0.6 ? 1 : r < 0.9 ? 2 : 3, // usually a lone ghost
+    size: rand(0.75, 1.1),
+    opacity: rand(0.5, 0.78),
+    sway: rand(6, 16) * (Math.random() > 0.5 ? 1 : -1),
+  };
+};
+
 type Orbit = {cx: number; cy: number; r: number; dur: number; dir: 1 | -1; phase: number};
 const newOrbits = (): Orbit[] => {
   const w = window.innerWidth;
@@ -284,35 +325,51 @@ function ScrollGhosts() {
   const [orbits, setOrbits] = useState<Orbit[]>(() => (typeof window === 'undefined' ? [] : newOrbits()));
   const [gone, setGone] = useState<number[]>([]); // ghosts banished in this exorcism
   const [puffs, setPuffs] = useState<{id: number; x: number; y: number}[]>([]);
+  const [freq] = useGhostFreq();
+  const [haunt, setHaunt] = useState<Haunting>(() => newHaunting());
   useEffect(() => {
-    if (!allowed || exorcised) return;
+    if (!allowed || exorcised || freq === 'off') return;
+    const f = FREQ[freq];
     let y = window.scrollY;
     let hide = 0;
-    let fresh = true;
+    let travelled = 0; // px scrolled in this session
+    let decided: boolean | null = null; // does this session get a ghost? decided once per session
+    let quietUntil = 0; // cooldown after a visit
     const on = () => {
       const dy = window.scrollY - y;
       y = window.scrollY;
       if (Math.abs(dy) < 1) return;
-      if (fresh) setOrbits(newOrbits()); // each scroll session, the companions haunt a new spot
-      fresh = false;
-      const max = document.documentElement.scrollHeight - window.innerHeight;
-      setS((o) => ({show: true, p: max > 0 ? Math.min(1, Math.max(0, y / max)) : 0, dir: Math.sign(dy) || o.dir}));
+      travelled += Math.abs(dy);
       window.clearTimeout(hide);
       hide = window.setTimeout(() => {
-        fresh = true;
+        travelled = 0;
+        decided = null;
         setS((o) => ({...o, show: false}));
-      }, 650);
+      }, 700);
+      if (decided === null && travelled >= f.minScroll) {
+        decided = Date.now() >= quietUntil && Math.random() < f.chance;
+        if (decided) {
+          setHaunt(newHaunting());
+          setOrbits(newOrbits());
+          quietUntil = Date.now() + rand(f.cooldown[0], f.cooldown[1]);
+        }
+      }
+      if (!decided) return;
+      // the ghost drifts along its diagonal as you scroll: one screen and a half crosses it
+      const p = Math.min(1, Math.max(0, (travelled - f.minScroll) / (window.innerHeight * 1.5)));
+      setS({show: true, p, dir: Math.sign(dy) || 1});
     };
     window.addEventListener('scroll', on, {passive: true});
     return () => {
       window.removeEventListener('scroll', on);
       window.clearTimeout(hide);
     };
-  }, [allowed, exorcised]);
+  }, [allowed, exorcised, freq]);
   useEffect(() => {
     if (wand) {
       setGone([]);
       setOrbits(newOrbits());
+      setHaunt(newHaunting(true));
     }
   }, [wand]);
   if (!allowed || exorcised) return null;
@@ -332,12 +389,17 @@ function ScrollGhosts() {
       }, 650);
     }
   };
-  // lead ghost: top-left -> bottom-right across the page area, by scroll progress (centre of the page while exorcising)
+  // lead ghost: crosses the page area along this haunting's diagonal (centre of the page while exorcising)
   const p = wand ? 0.45 : s.p;
+  const fromLeft = haunt.path === 'tl-br' || haunt.path === 'bl-tr';
+  const fromTop = haunt.path === 'tl-br' || haunt.path === 'tr-bl';
+  const px = fromLeft ? p : 1 - p;
+  const py = fromTop ? p : 1 - p;
   const lead = {
-    left: `calc(var(--vf-sb, 0px) + 24px + ${p} * (100vw - var(--vf-sb, 0px) - 120px))`,
-    top: `calc(84px + ${p} * (100dvh - 84px - 170px))`,
+    left: `calc(var(--vf-sb, 0px) + 24px + ${px} * (100vw - var(--vf-sb, 0px) - 120px))`,
+    top: `calc(84px + ${py} * (100dvh - 84px - 170px))`,
   };
+  const companions = wand ? orbits : orbits.slice(0, Math.max(0, haunt.count - 1));
   const ghostBtn = 'pointer-events-auto rounded-full outline-none focus-visible:outline-2 focus-visible:outline-ghost';
   return (
     <div className={cx('fixed inset-0 z-[70]', wand ? 'pointer-events-auto bg-lab-950/35 backdrop-blur-[1px]' : 'pointer-events-none')} aria-hidden={!wand} onClick={wand ? () => undefined : undefined}>
@@ -353,17 +415,17 @@ function ScrollGhosts() {
             className={cx('absolute', wand ? ghostBtn : 'pointer-events-none')}
             style={lead}
             initial={{opacity: 0, scale: 0.6}}
-            animate={{opacity: 0.92, scale: 1, rotate: wand ? 0 : s.dir * 10}}
+            animate={{opacity: wand ? 0.95 : haunt.opacity, scale: wand ? 1 : haunt.size, rotate: wand ? 0 : (fromLeft ? 1 : -1) * haunt.sway}}
             exit={{opacity: 0, scale: gone.includes(0) ? 1.8 : 0.85, transition: {duration: 0.35}}}
             transition={{type: 'spring', stiffness: 160, damping: 22, opacity: {duration: 0.2}}}
           >
-            <div className="ghost-bob"><GhostShape className="ghost h-14 w-12" look={wand ? 0 : s.dir * 2.5} /></div>
+            <div className="ghost-bob"><GhostShape className="ghost h-14 w-12" look={wand ? 0 : (fromTop ? 1 : -1) * 2.5} /></div>
           </motion.button>
         ) : null}
         {visible
-          ? orbits.map((o, k) =>
+          ? companions.map((o, k) =>
               gone.includes(k + 1) ? null : (
-                <motion.div key={`orbit-${k}`} className="absolute" style={{left: o.cx, top: o.cy, width: 0, height: 0}} initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0, transition: {duration: 0.35}}}>
+                <motion.div key={`orbit-${k}`} className="absolute" style={{left: o.cx, top: o.cy, width: 0, height: 0}} initial={{opacity: 0}} animate={{opacity: wand ? 1 : haunt.opacity}} exit={{opacity: 0, transition: {duration: 0.35}}}>
                   <motion.div className="absolute" style={{width: 0, height: 0}} initial={{rotate: o.phase}} animate={{rotate: o.phase + 360 * o.dir}} transition={{duration: o.dur, ease: 'linear', repeat: Infinity}}>
                     <motion.button
                       type="button"

@@ -92,6 +92,8 @@ export type VideoProps = {
   showSafeZones: boolean;
   /** Only used by UniversalCustom. */
   theme?: ThemeId;
+  /** The style id (case_study, news_breakdown, ...): its own palette and background over the theme. */
+  variant?: string;
   /** Frame-0 cover: 2-5 word hook shown full-contrast for the first 0.5 s. Empty = no cover. */
   coverText?: string;
   transition?: TransitionStyle;

@@ -7,7 +7,7 @@ import {api, type Job, type Onboarding, type Options, type ProjectRow} from '../
 import {platformName, titleCase} from '../lib/format';
 import {href, navigate, useApi} from '../lib/hooks';
 import {slugFromJobLog, useStudio} from '../lib/studio';
-import {STYLE_INFO, styleImage, styleInfo} from '../lib/styles';
+import {FAMILIES, STYLE_INFO, styleImage, styleInfo, type StyleFamily} from '../lib/styles';
 
 function StyleCard({id, selected, onPick, beats, name, line, voice, language}: {id: string; selected: boolean; onPick: () => void; beats?: string; name: string; line: string; voice: string; language: string}) {
   const info = styleInfo(id);
@@ -26,6 +26,7 @@ function StyleCard({id, selected, onPick, beats, name, line, voice, language}: {
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-3">
         <span className="font-semibold leading-tight text-bone [overflow-wrap:anywhere]">{info.name}</span>
+        {info.bestFor ? <span className="text-xs font-semibold text-pumpkin">Best for: {info.bestFor}</span> : null}
         <span className="text-[0.8125rem] leading-snug text-moss">{info.blurb}</span>
         {beats ? <span title={beats} className="mt-auto pt-1 text-xs leading-snug text-fog line-clamp-2">{beats}</span> : null}
       </div>
@@ -37,31 +38,51 @@ function StyleCard({id, selected, onPick, beats, name, line, voice, language}: {
 
 function StylePicker({styles, value, onChange, templates, line, voice, language}: {styles: string[]; value: string; onChange: (s: string) => void; templates: Options['templates']; line: string; voice: string; language: string}) {
   const name = useId();
-  const featured = styles.filter((s) => STYLE_INFO[s]?.featured);
-  const rest = styles.filter((s) => !STYLE_INFO[s]?.featured);
-  const [more, setMore] = useState(!featured.includes(value));
   const beatsOf = (s: string) => templates[s]?.beats.map((b) => b.label || b.id).join(' → ');
+  // one shelf per family, so look-alike styles sit side by side and their differences are obvious
+  const [tab, setTab] = useState<StyleFamily>(styleInfo(value).family);
+  useEffect(() => setTab(styleInfo(value).family), [value]);
+  const order = Object.keys(STYLE_INFO);
+  const rank = (s: string) => (order.indexOf(s) < 0 ? 999 : order.indexOf(s));
+  const inTab = styles.filter((s) => styleInfo(s).family === tab).sort((a, b) => rank(a) - rank(b)); // curated order, not A-Z
+  const fam = FAMILIES.find((f) => f.id === tab)!;
   return (
     <fieldset className="min-w-0">
-      <legend className="mb-2 text-sm font-semibold text-bone">Style</legend>
-      <div role="radiogroup" aria-label="Video style" className="grid grid-cols-2 gap-3 @lg:grid-cols-3 @5xl:grid-cols-6">
-        {featured.map((s) => <StyleCard key={s} id={s} name={name} selected={value === s} onPick={() => onChange(s)} beats={beatsOf(s)} line={line} voice={voice} language={language} />)}
+      <legend className="mb-2 flex w-full flex-wrap items-baseline justify-between gap-2 text-sm font-semibold text-bone">
+        <span>Style</span>
+        <span className="text-xs font-normal text-fog">Picked: <b className="text-pumpkin">{styleInfo(value).name}</b> · {styleInfo(value).bestFor}</span>
+      </legend>
+      <div role="tablist" aria-label="Style families" className="mb-3 flex gap-1 overflow-x-auto rounded-lg border border-lab-600 bg-lab-950 p-1">
+        {FAMILIES.map((f) => {
+          const count = styles.filter((s) => styleInfo(s).family === f.id).length;
+          const has = styleInfo(value).family === f.id;
+          return (
+            <button key={f.id} type="button" role="tab" aria-selected={tab === f.id} onClick={() => setTab(f.id)}
+              className={cx('flex min-h-11 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm font-semibold whitespace-nowrap transition-colors', tab === f.id ? 'bg-lab-700 text-bone shadow-[inset_0_0_0_1px_var(--color-lab-400)]' : 'text-moss hover:text-bone')}>
+              {f.label}
+              <span className="text-xs font-normal text-fog tabular">{count}</span>
+              {has ? <span aria-label="(current style)" className="size-1.5 rounded-full bg-pumpkin" /> : null}
+            </button>
+          );
+        })}
       </div>
-      <button type="button" aria-expanded={more} onClick={() => setMore(!more)} className="mt-3 flex min-h-10 items-center gap-1.5 text-sm font-semibold text-moss hover:text-bone">
-        <ChevronDown aria-hidden className={cx('size-4 transition-transform', more && 'rotate-180')} />
-        {more ? 'Fewer styles' : `${rest.length} more styles and engines`}
-      </button>
-      {more ? (
-        <div role="radiogroup" aria-label="More styles" className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2">
-          {rest.map((s) => {
+      <p className="mb-2 text-xs text-fog">{fam.hint}</p>
+      {tab !== 'engine' ? (
+        <div role="radiogroup" aria-label={`${fam.label} styles`} className="grid grid-cols-2 gap-3 @2xl:grid-cols-4">
+          {inTab.map((s) => <StyleCard key={s} id={s} name={name} selected={value === s} onPick={() => onChange(s)} beats={beatsOf(s)} line={line} voice={voice} language={language} />)}
+        </div>
+      ) : (
+        <div role="radiogroup" aria-label="Specialist engines" className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-2">
+          {inTab.map((s) => {
             const info = styleInfo(s);
             const on = value === s;
             return (
-              <label key={s} className={cx('flex min-h-14 min-w-0 cursor-pointer items-center gap-3 rounded-md border p-2 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-pumpkin', on ? 'border-pumpkin bg-lab-800' : 'border-lab-600 bg-lab-850 hover:border-lab-400')}>
+              <label key={s} className={cx('flex min-h-16 min-w-0 cursor-pointer items-center gap-3 rounded-md border p-2 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-pumpkin', on ? 'border-pumpkin bg-lab-800' : 'border-lab-600 bg-lab-850 hover:border-lab-400')}>
                 <input type="radio" name={name} value={s} checked={on} onChange={() => onChange(s)} className="sr-only" />
                 <img src={styleImage(s)} alt="" width={40} height={50} loading="lazy" className="h-12 w-10 shrink-0 rounded-sm bg-lab-950 object-cover object-top p-0.5 ring-1 ring-lab-500" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold text-bone">{info.name}</span>
+                  <span className="block truncate text-xs text-moss">{info.bestFor}</span>
                   <span className="block truncate text-xs text-fog">{info.engine}</span>
                 </span>
                 {on ? <Check aria-hidden className="size-4 shrink-0 text-pumpkin" /> : null}
@@ -69,11 +90,10 @@ function StylePicker({styles, value, onChange, templates, line, voice, language}
             );
           })}
         </div>
-      ) : null}
+      )}
     </fieldset>
   );
 }
-
 // ------------------------------------------------------------------ new video form
 function NewVideo({opts, onWritten}: {opts: Options; onWritten: (slug: string) => void}) {
   const {act, watch, toast, demo} = useStudio();

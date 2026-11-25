@@ -7,6 +7,7 @@ import {MapView} from './MapView';
 import {CounterVisual} from './visuals/CounterVisual';
 import {CutoutVisual} from './visuals/CutoutVisual';
 import {DiagramVisual} from './visuals/DiagramVisual';
+import {KineticVisual} from './visuals/KineticVisual';
 import {SketchVisual} from './visuals/SketchVisual';
 import {StickmanVisual} from './visuals/StickmanVisual';
 import {TimelineVisual} from './visuals/TimelineVisual';
@@ -152,6 +153,10 @@ const MapPanel: React.FC<Props> = ({visual, theme, brand, ratio}) => {
  */
 export const SceneView: React.FC<Props> = (props) => {
   const {visual} = props;
+  // Kinetic type: every word-led scene is set as type (the text is the picture)
+  if (props.theme.background === 'kinetic' && ['headline', 'sketch', 'bullets', 'quote', 'cutout'].includes(String(visual.type))) {
+    return <KineticVisual {...props} />;
+  }
   switch (visual.type) {
     case 'stat':
     case 'counter':

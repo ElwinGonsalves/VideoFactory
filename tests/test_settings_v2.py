@@ -81,24 +81,26 @@ def test_limit_blocks_calls_at_the_cap_and_ignores_free_tier(cfg: dict[str, Any]
 
 
 def test_batch_pauses_cleanly_at_the_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import make_video
 
     sent: list[str] = []
     calls: list[str] = []
 
-    def fake(d: dict[str, Any], upload_at: str | None, produce: Any) -> str:
+    rendered: list[str] = []
+
+    def fake(d: dict[str, Any]) -> str:
         calls.append(d["content"])
         if d["content"] == "second":
             raise usage.SpendLimitReached("Spend limit reached: Rs 100")
         return d["content"]
 
-    monkeypatch.setattr(batch_run, "process_row", fake)
-    monkeypatch.setattr(make_video, "produce", lambda p: {})
+    monkeypatch.setattr(batch_run, "write_row", fake)
+    monkeypatch.setattr(batch_run, "render_row", lambda slug, *a: rendered.append(slug))
     monkeypatch.setattr(notify, "send", lambda title, *a, **k: sent.append(title) or {})
     row = lambda c: {"data": {"content": c, "title": c}, "upload_at": None}  # noqa: E731
     write_json(tmp_path / "b.json", {"rows": [row("first"), row("second"), row("third")]})
     assert batch_run.main([str(tmp_path / "b.json")]) == 3
-    assert calls == ["first", "second"]  # the third row was never started
+    assert calls == ["first", "second"]  # the third row was never written
+    assert rendered == ["first"]  # what was written before the limit still renders
     assert sent == ["video-factory: batch paused (spend limit)"]
 
 

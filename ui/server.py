@@ -765,9 +765,19 @@ def batch_run(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
 
     from batch import sheet
 
+    mode = str(body.get("mode") or "render")
+    if mode not in ("render", "scripts"):
+        raise HTTPException(400, "mode must be render or scripts")
     results = [r for r in _batch_results(body.get("raw") or []) if r.get("data")]
-    if not results or not all(r["ok"] for r in results):
-        raise HTTPException(400, "fix the rows marked in red first")
+    if body.get("skip_bad"):
+        results = [r for r in results if r["ok"]]  # run the good rows now; the red ones wait for a fix
+    if body.get("only_rows"):  # retry: just these sheet rows
+        wanted = {int(x) for x in body["only_rows"]}
+        results = [r for r in results if r["row"] in wanted]
+    if not results:
+        raise HTTPException(400, "no rows to run")
+    if not all(r["ok"] for r in results):
+        raise HTTPException(400, "fix the rows marked in red first, or skip them")
     try:
         step = sheet.parse_interval(str(body.get("interval", "1h")))
     except ValueError as exc:
@@ -782,17 +792,46 @@ def batch_run(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
             raise HTTPException(400, "first upload time is not a valid date/time") from exc
     times = sheet.upload_times(results, start, step)
     spec = {
+        "mode": mode,
         "rows": [
-            {"data": r["data"], "upload_at": t.isoformat() if t else None} for r, t in zip(results, times, strict=True)
-        ]
+            {"row": r["row"], "data": r["data"], "upload_at": t.isoformat() if t else None}
+            for r, t in zip(results, times, strict=True)
+        ],
     }
     inbox = ROOT / "ui" / "logs" / "inputs"
     inbox.mkdir(parents=True, exist_ok=True)
     path = inbox / f"batch-{secrets.token_hex(5)}.json"
     write_json(path, spec)
-    return jobs.submit(
-        "batch", f"batch of {len(results)} video(s), one at a time", ["batch/run.py", str(path)]
-    ).public()
+    label = (
+        f"batch: write and render {len(results)} video(s), one at a time"
+        if mode == "render"
+        else f"batch: write {len(results)} script(s)"
+    )
+    return jobs.submit("batch", label, ["batch/run.py", str(path)]).public()
+
+
+@app.post("/api/batch/render-written")
+def batch_render_written(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Render scripts a script-only batch wrote (one job, one video at a time)."""
+    slugs = [_slug_ok(str(s)) for s in body.get("slugs") or []]
+    if not slugs:
+        raise HTTPException(400, "no scripts to render")
+    missing = [s for s in slugs if not (PROJECTS / s / "script.json").exists()]
+    if missing:
+        raise HTTPException(404, f"no script for: {', '.join(missing[:3])}")
+    code = (
+        "import sys; sys.path.insert(0, '.'); from make_video import produce; from pathlib import Path\n"
+        f"slugs = {slugs!r}\n"
+        "bad = 0\n"
+        "for k, s in enumerate(slugs, 1):\n"
+        "    print(f'[batch {k}/{len(slugs)}] ROW {s} RENDERING {s}', flush=True)\n"
+        "    try:\n"
+        "        produce(Path('projects') / s); print(f'[batch {k}/{len(slugs)}] ROW {s} DONE {s}', flush=True)\n"
+        "    except Exception as exc:\n"
+        "        bad += 1; print(f'[batch {k}/{len(slugs)}] ROW {s} FAILED render: {str(exc)[:180]}', flush=True)\n"
+        "sys.exit(1 if bad else 0)\n"
+    )
+    return jobs.submit("batch", f"batch: render {len(slugs)} written script(s)", ["-c", code]).public()
 
 
 # ------------------------------------------------------------------ analytics

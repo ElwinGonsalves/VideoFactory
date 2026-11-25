@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 from pathlib import Path
 from typing import Any
 
@@ -93,6 +94,7 @@ def build_props(
     caption_style: str,
     theme: str | None,
     asset_prefix: str,
+    variant: str | None = None,
     brand_name: str = "default",
     show_safe_zones: bool = False,
     transition: str = "fade",
@@ -122,6 +124,8 @@ def build_props(
     }
     if theme:
         props["theme"] = theme
+    if variant:
+        props["variant"] = variant
     return props
 
 
@@ -190,13 +194,38 @@ def render_qa(composition: str, props_file: Path, duration_sec: float, out_dir: 
     return report
 
 
+def _render_target(out_mp4: Path) -> Path:
+    """Where Remotion writes. Inside OneDrive, a scratch file outside it: Remotion finishes by renaming its
+    in-progress file, and OneDrive's lock on fresh files makes that rename fail with EPERM."""
+    if os.name == "nt" and "onedrive" in str(out_mp4.resolve()).lower():
+        scratch = Path.home() / ".video-factory" / "render-tmp"
+        scratch.mkdir(parents=True, exist_ok=True)
+        return scratch / out_mp4.name
+    return out_mp4
+
+
+def _move_into_place(src: Path, dest: Path) -> None:
+    """Move the finished file into output/, retrying while OneDrive or antivirus holds it."""
+    for i in range(40):
+        try:
+            if dest.exists():
+                dest.unlink()
+            shutil.move(str(src), str(dest))
+            return
+        except PermissionError:
+            if i == 39:
+                raise
+            time.sleep(0.25 * min(i + 1, 8))
+
+
 def render_video(composition: str, props_file: Path, out_mp4: Path, concurrency: str | None = None) -> Path:
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
+    target = _render_target(out_mp4)
     args = [
         "render",
         "src/index.ts",
         composition,
-        str(out_mp4),
+        str(target),
         f"--props={props_file}",
         "--codec=h264",
         "--pixel-format=yuv420p",
@@ -212,10 +241,16 @@ def render_video(composition: str, props_file: Path, out_mp4: Path, concurrency:
     except RuntimeError as exc:
         # Under memory pressure Chrome can miss Remotion's 30 s startup window. One retry with
         # fewer parallel tabs fixes it; any other failure is re-raised unchanged.
-        if "setting up the headless browser" not in str(exc) or concurrency:
+        # The same pressure shows up as "takes a long time to load" when the page misses its props timeout.
+        slow = ("setting up the headless browser", "takes a long time to load", "browser is not responding")
+        if not any(s in str(exc) for s in slow) or concurrency:
             raise
-        print("      browser startup timed out; retrying with --concurrency=2", flush=True)
-        run_stream([npx(), "remotion", *args, "--concurrency=2"], cwd=STUDIO)
+        print(
+            "      the render browser was slow to start; retrying with --concurrency=2 and a longer timeout", flush=True
+        )
+        run_stream([npx(), "remotion", *args, "--concurrency=2", "--timeout=120000"], cwd=STUDIO)
+    if target != out_mp4:
+        _move_into_place(target, out_mp4)
     faststart(out_mp4)
     return out_mp4
 

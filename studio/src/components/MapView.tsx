@@ -48,8 +48,8 @@ export const MapView: React.FC<{
   const projection = geoNaturalEarth1();
   if (target) projection.fitExtent([[24, 24], [width - 24, height - 24]], target);
   const path = geoPath(projection);
-  const land = theme.background === 'gradient' ? 'rgba(255,255,255,0.14)' : 'rgba(40,40,40,0.16)';
-  const border = theme.background === 'gradient' ? 'rgba(255,255,255,0.35)' : 'rgba(30,30,30,0.45)';
+  const land = theme.dark ? 'rgba(255,255,255,0.14)' : 'rgba(40,40,40,0.16)';
+  const border = theme.dark ? 'rgba(255,255,255,0.35)' : 'rgba(30,30,30,0.45)';
   const order = countries.map((c) => c.toUpperCase());
 
   return (

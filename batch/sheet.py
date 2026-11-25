@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from common import settings
+from common import settings, voices
 from pipeline.router import ROUTES
 
 COLUMNS = [
@@ -29,8 +29,35 @@ COLUMNS = [
     "auto_publish",
     "platforms",
     "schedule_at",
+    "language",
+    "length",
 ]
 MOODS = ("chill", "documentary", "upbeat", "dramatic")
+# Friendly spellings people type into sheets, mapped to the real values (so a row is never lost to wording).
+STYLE_ALIASES = {
+    "concept": "concept_explainer", "explainer": "concept_explainer", "case": "case_study", "casestudy": "case_study",
+    "kinetic": "kinetic_type", "kinetic_typography": "kinetic_type", "vox": "vox_documentary", "documentary": "vox_documentary",
+    "map": "editorial_map", "maps": "editorial_map", "news": "news_breakdown", "notebook": "hand_drawn", "handdrawn": "hand_drawn",
+    "graphite": "sketch", "pencil": "sketch", "stick_man": "stickman", "stick_figure": "stickman", "longform": "long_form",
+    "long": "long_form", "youtube": "long_form", "math": "math_science", "manim": "math_science", "blueprint": "reference_blueprint",
+}  # fmt: skip
+ASPECT_ALIASES = {"9x16": "9:16", "916": "9:16", "vertical": "9:16", "portrait": "9:16", "short": "9:16", "shorts": "9:16",
+                  "reel": "9:16", "16x9": "16:9", "169": "16:9", "landscape": "16:9", "wide": "16:9", "horizontal": "16:9",
+                  "1x1": "1:1", "11": "1:1", "square": "1:1"}  # fmt: skip
+PLATFORM_ALIASES = {
+    "yt": "youtube",
+    "ig": "instagram",
+    "insta": "instagram",
+    "reels": "instagram",
+    "tt": "tiktok",
+    "tik_tok": "tiktok",
+}
+
+
+def _key(v: str) -> str:
+    return re.sub(r"[\s\-]+", "_", v.strip().lower())
+
+
 ASPECTS = ("9:16", "16:9", "1:1")
 PLATFORMS = ("youtube", "instagram", "tiktok")
 MAX_ROWS = 100
@@ -137,7 +164,7 @@ def sample_xlsx() -> bytes:
         cell.font = Font(bold=True)
     for row in SAMPLE:
         ws.append(row)
-    for col, width in zip("ABCDEFGHIJ", (11, 32, 60, 20, 13, 14, 22, 13, 20, 18), strict=True):
+    for col, width in zip("ABCDEFGHIJKL", (11, 32, 60, 20, 13, 14, 22, 13, 20, 18, 12, 9), strict=True):
         ws.column_dimensions[col].width = width
     notes = wb.create_sheet("README")
     notes.append(["column", "meaning"])
@@ -151,6 +178,8 @@ def sample_xlsx() -> bytes:
         ("auto_publish", "yes/no: upload after rendering"),
         ("platforms", "youtube,instagram,tiktok (comma separated)"),
         ("schedule_at", "optional local time like 2026-12-01 20:00; empty = use the relative interval"),
+        ("language", "optional: english, hinglish (Roman script) or hindi (Devanagari); empty = your Settings default"),
+        ("length", "optional, idea rows: 45, 45s or 3m (15 s to 30 min); empty = your Settings default"),
     ):
         notes.append(list(line))
     buf = io.BytesIO()
@@ -187,18 +216,38 @@ def validate_rows(rows: list[dict[str, str]], tz: str = "Asia/Kolkata") -> list[
             errors.append("content is empty")
         elif mode == "script" and len(content.split()) < 8:
             errors.append("script content is too short (min 8 words)")
-        style = raw.get("style") or d["style"]
+        style = _key(raw.get("style") or d["style"])
+        style = STYLE_ALIASES.get(style.replace("_", ""), STYLE_ALIASES.get(style, style))
         if style not in ROUTES:
-            errors.append(f"unknown style '{style}'")
-        aspect = raw.get("aspect_ratio") or d["aspect_ratio"]
+            errors.append(
+                f"unknown style '{raw.get('style')}' (try concept_explainer, case_study, whiteboard, stickman...)"
+            )
+        aspect = (raw.get("aspect_ratio") or d["aspect_ratio"]).strip().lower()
+        aspect = ASPECT_ALIASES.get(aspect.replace(" ", ""), aspect)
         if aspect not in ASPECTS:
             errors.append(f"aspect_ratio must be one of {', '.join(ASPECTS)}")
-        mood = (raw.get("music_mood") or d["music_mood"]).lower()
+        mood = (raw.get("music_mood") or d["music_mood"]).strip().lower()
         if mood not in MOODS:
             errors.append(f"music_mood must be one of {', '.join(MOODS)}")
-        platforms = [p.strip().lower() for p in re.split(r"[,;\s]+", raw.get("platforms", "")) if p.strip()] or [
+        platforms = [p.strip().lower() for p in re.split(r"[,;\s/]+", raw.get("platforms", "")) if p.strip()] or [
             "youtube"
         ]
+        platforms = list(dict.fromkeys(PLATFORM_ALIASES.get(p, p) for p in platforms))
+        language = (raw.get("language") or "").strip().lower()
+        if language and voices.language_key(language) != language and language not in ("en", "hi", "हिन्दी"):
+            errors.append("language must be english, hinglish or hindi")
+        language = voices.language_key(language) if language else ""
+        length = 0
+        if (raw.get("length") or "").strip():
+            m = re.fullmatch(
+                r"(\d+(?:\.\d+)?)\s*(s|sec|secs|seconds|m|min|mins|minutes)?", raw["length"].strip().lower()
+            )
+            if not m:
+                errors.append("length must look like 45, 45s or 3m")
+            else:
+                length = round(float(m.group(1)) * (60 if (m.group(2) or "s").startswith("m") else 1))
+                if not 15 <= length <= 1800:
+                    errors.append("length must be between 15 seconds and 30 minutes")
         bad = [p for p in platforms if p not in PLATFORMS]
         if bad:
             errors.append(f"unknown platform(s): {', '.join(bad)}")
@@ -223,6 +272,8 @@ def validate_rows(rows: list[dict[str, str]], tz: str = "Asia/Kolkata") -> list[
                     "auto_publish": _truthy(raw.get("auto_publish", "")),
                     "platforms": platforms,
                     "schedule_at": schedule_at.isoformat() if schedule_at else "",
+                    "language": language,
+                    "length": length,
                 },
             }
         )

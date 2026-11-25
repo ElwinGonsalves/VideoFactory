@@ -15,9 +15,9 @@ const CAPTION_BAND = 230;
 /** Shared renderer behind every composition; compositions differ only by `themeId`. */
 export const ThemedVideo: React.FC<VideoProps & {themeId: ThemeId}> = (props) => {
   const {fps} = useVideoConfig();
-  const {scenes, captions, captionStyle, brand, aspectRatio, audioSrc, showSafeZones, themeId} = props;
-  const theme = buildTheme(themeId, brand);
-  const dark = theme.background === 'gradient';
+  const {scenes, captions, captionStyle, brand, aspectRatio, audioSrc, showSafeZones, themeId, variant} = props;
+  const theme = buildTheme(themeId, brand, variant);
+  const dark = theme.dark;
   const hasCaptions = captionStyle !== 'none' && captions.length > 0;
   const transition = props.transition ?? 'fade';
   const hide = props.qaHideContent === true;

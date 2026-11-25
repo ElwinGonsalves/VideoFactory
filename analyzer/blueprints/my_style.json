@@ -1,0 +1,62 @@
+{
+  "style_name": "my_style",
+  "aspect_ratio": "9:16",
+  "target_duration_sec": 59,
+  "recommended_engine": "vox_remotion",
+  "hook_first_3s": {
+    "visual_pattern": "A vertical satellite map starts focused on India highlighted in deep red as a white stick-figure icon pops up and scales larger, then the camera pans rapidly east across Asia and the Pacific Ocean while the stick figure walks across open water drawing a straight white path line until reaching the U…",
+    "verbal_pattern": "You can actually walk from India to the United States.",
+    "visual_vs_verbal_contrast": "While the narration claims you can actually walk from India to the United States, the first 3 seconds playfully show the stick figure taking an impossible straight shortcut walking across the middle of the Pacific Ocean rather than the real overland route through Russia and the Bering Strait reveal…"
+  },
+  "pacing": {
+    "avg_shot_sec": 29.37,
+    "median_shot_sec": 29.37,
+    "words_per_minute": 170.6,
+    "caption_style": "minimal_editorial",
+    "transition_style": "whip_pan"
+  },
+  "audio_profile": {
+    "narration_tone": "energetic_short",
+    "music_mood": "documentary",
+    "sfx_cues": [
+      "paper_flip",
+      "subtle_whoosh"
+    ]
+  },
+  "beat_template": [
+    {
+      "beat": "hook",
+      "pct_duration": 0.06,
+      "visual_role": "pattern interrupt"
+    },
+    {
+      "beat": "concept",
+      "pct_duration": 0.3,
+      "visual_role": "diagram / kinetic text"
+    },
+    {
+      "beat": "case_study",
+      "pct_duration": 0.46,
+      "visual_role": "real figures, timeline, archive media"
+    },
+    {
+      "beat": "takeaway",
+      "pct_duration": 0.18,
+      "visual_role": "one-line takeaway + loop to hook"
+    }
+  ],
+  "sources": [
+    "https://www.youtube.com/shorts/ZZu9XrsHoxI"
+  ],
+  "created": "2026-11-23",
+  "on_screen_text": [
+    "You can actually",
+    "walk from India",
+    "United States.",
+    "CRAZY",
+    "10,000 MILES",
+    "16,000 KM",
+    "BIGGEST OBSTACLE"
+  ],
+  "visual_style_notes": "9:16 vertical map-explainer aesthetic built on dark teal ocean and earthy satellite terrain, contrasted with vivid country color-fills in crimson red, bright green, purple, orange, and royal blue. Graphics combine a flat white stick figure, glowing white route lines, circular photo cutouts of desert terrain, and miniature tree and thermometer icons. Typography pairs small centered white sans-serif captions in the lower third with bold all-caps glowing white display titles."
+}

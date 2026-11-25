@@ -146,6 +146,67 @@ LONG_FORM = ScriptTemplate(
 )  # fmt: skip
 
 
+# --- styles that share a composition get their own beats and visual bias, so each renders distinctly ---
+CASE_STUDY = ScriptTemplate(
+    "concept",  # same family: a 9:16 explainer
+    "Case Study",
+    (
+        _beat("hook", "Hook", "The single number or decision that made the story famous.", ("counter", "stat"),
+              "One big figure with a short label.", 0.10),
+        _beat("backstory", "Backstory", "Where the company or person started, with dates.", ("timeline", "image"),
+              "2-4 dated milestones (year + one line).", 0.28),
+        _beat("the_move", "The Move", "The strategy or bet, explained as a mechanism.", ("flow", "diagram"),
+              "3-4 one-word steps of how the move worked.", 0.27),
+        _beat("results", "Results", "What happened next, in numbers.", ("chart", "counter"),
+              "Real data points (label + number), before vs after.", 0.25),
+        _beat("lesson", "Lesson", "The transferable lesson in one line.", ("headline", "quote"),
+              "Five words or fewer on screen.", 0.10),
+    ),
+    notes="Every figure needs a year and a source; use timelines and charts, not generic diagrams.",
+)  # fmt: skip
+
+KINETIC = ScriptTemplate(
+    "concept",
+    "Kinetic Type",
+    (
+        _beat("hook", "Hook", "A punchy claim in 3-6 words.", ("headline",), "The claim itself, on screen, huge.", 0.12),
+        _beat("punches", "Punches", "Short rapid statements, one idea per 2-3 second scene.", ("headline", "stat"),
+              "3-6 words per scene; a number when there is one.", 0.68),
+        _beat("payoff", "Payoff", "The line that lands it.", ("headline",), "One line, the strongest of the video.", 0.20),
+    ),
+    notes="Many short scenes (2-3 s each). On-screen text is the visual: keep it to the punchiest words.",
+)  # fmt: skip
+
+MAP = ScriptTemplate(
+    "vox",
+    "Editorial Map",
+    (
+        _beat("where", "Where", "Open on the place where it happens.", ("map",), "ISO A3 codes of the countries to light up.", 0.20),
+        _beat("spread", "The Spread", "How it moved across borders over time.", ("map", "timeline"),
+              "Countries in the order they joined, with years.", 0.35),
+        _beat("why_here", "Why Here", "Geography, money or history that explains it.", ("map", "chart", "image"),
+              "One comparison between regions.", 0.27),
+        _beat("now", "Where It Stands", "The map today and what to watch.", ("map", "quote"), "The current map state.", 0.18),
+    ),
+    notes="Most scenes are maps. Use real ISO A3 country codes.",
+)  # fmt: skip
+
+NEWS = ScriptTemplate(
+    "vox",
+    "News Breakdown",
+    (
+        _beat("what_happened", "What Happened", "The news in one sentence, with the date.", ("headline", "image"),
+              "A headline of the event and its date.", 0.22),
+        _beat("why_it_matters", "Why It Matters", "Who is affected and how much.", ("bullets", "chart", "stat"),
+              "2-4 short bullet points or the key figure.", 0.38),
+        _beat("context", "Context", "What led here, briefly.", ("timeline", "map"), "2-3 dated steps.", 0.20),
+        _beat("whats_next", "What's Next", "What to watch, without speculation.", ("bullets", "quote"),
+              "The next scheduled event or a sourced quote.", 0.20),
+    ),
+    notes="Neutral newsroom tone. Attribute every claim; never invent quotes.",
+)  # fmt: skip
+
+
 class ScriptTemplateRegistry:
     """Style id -> template. Unknown styles fall back to the concept structure."""
 
@@ -154,7 +215,7 @@ class ScriptTemplateRegistry:
         self._families: dict[str, ScriptTemplate] = {}
 
     def register(self, template: ScriptTemplate, *styles: str) -> None:
-        self._families[template.family] = template
+        self._families.setdefault(template.family, template)  # the first template registered is the family's own
         for s in styles:
             self._by_style[s] = template
 
@@ -192,11 +253,16 @@ class ScriptTemplateRegistry:
 
 
 REGISTRY = ScriptTemplateRegistry()
-REGISTRY.register(CONCEPT, "concept_explainer", "case_study", "kinetic_type", "ui_demo", "hybrid_or_custom")
-REGISTRY.register(VOX, "vox_documentary", "editorial_map", "news_breakdown", "openmontage")
+REGISTRY.register(CONCEPT, "concept_explainer", "ui_demo", "hybrid_or_custom")
+REGISTRY.register(VOX, "vox_documentary", "openmontage")
 REGISTRY.register(WHITEBOARD, "whiteboard", "hand_drawn", "sketch", "explainroo", "handanim")
 REGISTRY.register(STICKMAN, "stickman")
 REGISTRY.register(LONG_FORM, "long_form")
+# per-style variants: registered after their families, which keep CONCEPT / VOX as the family template
+REGISTRY.register(CASE_STUDY, "case_study")
+REGISTRY.register(KINETIC, "kinetic_type")
+REGISTRY.register(MAP, "editorial_map")
+REGISTRY.register(NEWS, "news_breakdown")
 
 
 def default_aspect_for(style: str) -> str | None:

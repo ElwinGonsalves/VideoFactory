@@ -1,7 +1,7 @@
 import {Bell, Brain, CircleQuestionMark, ExternalLink, Film, Ghost, KeyRound, LineChart, LogIn, Radio, Save, ShieldCheck, Stethoscope, TestTube, Upload, Users, Zap} from 'lucide-react';
 import {useEffect, useId, useState, type ReactNode} from 'react';
 import {Badge, Button, Check, Field, Input, LinkButton, Notice, Panel, Segmented, Select, Skeleton, Switch, cx} from '../components/ui';
-import {haunt, useHaunted} from '../components/Haunt';
+import {haunt, useGhostFreq, useHaunted} from '../components/Haunt';
 import {api, type Job, type Options} from '../lib/api';
 import {fmtNumber, platformName, titleCase} from '../lib/format';
 import {href, useApi, useRoute} from '../lib/hooks';
@@ -332,6 +332,7 @@ function AnalyticsSection({s}: {s: SettingsData}) {
 function SystemSection() {
   const {act, watch, setOnboardingOpen, setEnginesOpen} = useStudio();
   const fx = useHaunted();
+  const [ghostFreq, setGhostFreq] = useGhostFreq();
   return (
     <Panel id="system" title="System" description="Health checks and the way back to the old UI.">
       <div className="flex flex-wrap gap-2">
@@ -345,10 +346,26 @@ function SystemSection() {
       <div className="mt-5 border-t border-lab-700 pt-4">
         <Switch label="Haunted effects" hint={fx.reduce ? 'Your system asks for reduced motion, so bats, ghosts and lightning stay still.' : 'Bats, click ghosts, the scroll ghost, candle light, fog and the "It\'s alive!" strike.'} checked={fx.on} onChange={fx.setOn} />
         {fx.motion ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" variant="ghost" icon={Ghost} onClick={() => haunt('bats')}>Release the bats</Button>
-            <Button size="sm" variant="ghost" icon={Zap} onClick={() => haunt('alive')}>Strike lightning</Button>
-          </div>
+          <>
+            <div className="mt-4 max-w-xl">
+              <Segmented
+                label="Scroll ghosts"
+                value={ghostFreq}
+                onChange={setGhostFreq}
+                options={[
+                  {value: 'rare', label: 'Rare', hint: 'Now and then'},
+                  {value: 'sometimes', label: 'Sometimes', hint: 'Every few scrolls'},
+                  {value: 'always', label: 'Every scroll', hint: 'Full haunting'},
+                  {value: 'off', label: 'Off', hint: 'No ghosts'},
+                ]}
+              />
+              <p className="mt-1 text-xs text-fog">Scroll ghosts: how often a ghost drifts by. Each visit picks a random path; the wand in the header still banishes them.</p>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button size="sm" variant="ghost" icon={Ghost} onClick={() => haunt('bats')}>Release the bats</Button>
+              <Button size="sm" variant="ghost" icon={Zap} onClick={() => haunt('alive')}>Strike lightning</Button>
+            </div>
+          </>
         ) : null}
       </div>
     </Panel>

@@ -192,6 +192,7 @@ def produce(
             aspect_ratio=aspect,
             caption_style=script.get("caption_style", r.caption_style),
             theme=r.theme,
+            variant=style,
             asset_prefix=prefix,
             show_safe_zones=show_safe_zones,
             transition=blueprint.get("pacing", {}).get("transition_style", r.transition),

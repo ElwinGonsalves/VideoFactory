@@ -159,7 +159,8 @@ def test_gemini_grounding_parsing_and_refusal(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_templates_have_native_beats() -> None:
-    assert REGISTRY.for_style("case_study").beat_ids == ["hook", "mechanism", "case_study", "takeaway"]
+    assert REGISTRY.for_style("concept_explainer").beat_ids == ["hook", "mechanism", "case_study", "takeaway"]
+    assert REGISTRY.for_style("case_study").beat_ids == ["hook", "backstory", "the_move", "results", "lesson"]
     assert REGISTRY.for_style("vox_documentary").beat_ids == ["cold_open", "context", "turning_point", "synthesis"]
     assert REGISTRY.for_style("hand_drawn").beat_ids == ["problem", "draw_steps", "recap"]
     assert REGISTRY.for_style("stickman").beat_ids == ["setup", "escalation", "punchline"]
