@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import sys
 from contextlib import closing
 from pathlib import Path
 
@@ -148,3 +149,20 @@ def test_migration_moves_files_rewrites_meta_and_state(tmp_path: Path, monkeypat
     )
     assert db.list_projects()[0]["id"] == "old-video"
     assert mig.migrate_one("old-video", dry=False) == []  # second run is a no-op
+
+
+def test_migration_root_flag_targets_another_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    for mod, name in ((mig, "ROOT"), (mig, "OUTPUT"), (mig, "PROJECTS"), (db, "DB_PATH")):
+        monkeypatch.setattr(mod, name, getattr(mod, name))  # restored after set_root rebinds them
+    out = tmp_path / "output"
+    out.mkdir()
+    (out / "old-video.mp4").write_bytes(b"mp4")
+    write_json(out / "old-video.meta.json", {"title": "Old video", "file": "output/old-video.mp4"})
+    monkeypatch.setattr(sys, "argv", ["migrate_output.py", "--root", str(tmp_path)])
+    assert mig.main() == 0
+    assert (out / "old-video" / "old-video.mp4").read_bytes() == b"mp4"
+    assert (tmp_path / "data" / "projects.db").exists()
+    assert [p["id"] for p in db.list_projects()] == ["old-video"]
+
+    monkeypatch.setattr(sys, "argv", ["migrate_output.py", "--root", str(tmp_path / "nowhere")])
+    assert mig.main() == 2

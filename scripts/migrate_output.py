@@ -2,6 +2,7 @@
 
     python scripts/migrate_output.py --dry-run     # show what would move
     python scripts/migrate_output.py               # back up first (see docs/DEBUGGING.md), then run
+    python scripts/migrate_output.py --root <repo> [--dry-run]   # migrate another checkout's output/
 
 What it does, per project: moves <slug>.mp4, <slug>.thumb.jpg, <slug>.meta.json into output/<slug>/,
 rewrites the `file` and `thumbnail` paths inside meta.json, repoints scheduler/state.sqlite `meta_path`
@@ -24,6 +25,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import OUTPUT, PROJECTS, ROOT, db, read_json, write_json  # noqa: E402
 
 SUFFIXES = (".mp4", ".thumb.jpg", ".meta.json")
+
+
+def set_root(root: Path) -> None:
+    """Point every path this script touches (output/, projects/, scheduler/, data/projects.db) at `root`."""
+    global ROOT, OUTPUT, PROJECTS
+    ROOT, OUTPUT, PROJECTS = root, root / "output", root / "projects"
+    db.DB_PATH = root / "data" / "projects.db"
 
 
 def flat_slugs() -> list[str]:
@@ -101,7 +109,14 @@ def repoint_state(dry: bool) -> list[str]:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--root", type=Path, default=ROOT, help="repo root to migrate (default: this checkout)")
     a = p.parse_args()
+    root = a.root.expanduser().resolve()
+    if not (root / "output").is_dir():
+        print(f"no output/ folder in {root}", file=sys.stderr)
+        return 2
+    set_root(root)
+    print(f"migrating {root}")
     slugs = flat_slugs()
     print(f"{len(slugs)} flat project(s) to migrate" + (" (dry run)" if a.dry_run else ""))
     for slug in slugs:
