@@ -130,14 +130,28 @@ async def require_token(request: Request, call_next):  # type: ignore[no-untyped
             error_body(400, "bad host", "Open the UI at http://127.0.0.1:<port>/ or http://localhost:<port>/."),
             status_code=400,
         )
+    origin = request.headers.get("origin")
+    if origin and origin != f"http://{request.headers.get('host', '')}":
+        # Cross-origin browser request (another site, or another app on a different localhost port). Rejected
+        # before CORS so such a page cannot read "/" and lift the session token out of the HTML.
+        return JSONResponse(
+            error_body(403, "cross-origin request blocked", "Open the UI from its own address."), status_code=403
+        )
     if path.startswith("/api/") or path.startswith("/files/"):
         supplied = request.headers.get("x-vf-token") or request.query_params.get("t")
-        if not supplied or not secrets.compare_digest(supplied, TOKEN):
+        if not token_ok(supplied):
             return JSONResponse(error_body(401, "missing or wrong session token"), status_code=401)
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Frame-Options"] = "DENY"  # no clickjacking of Publish / Delete in a hidden iframe
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
     return response
+
+
+def token_ok(supplied: str | None) -> bool:
+    """Timing-safe token check that returns False (not a 500) for non-ASCII input."""
+    return bool(supplied) and secrets.compare_digest(str(supplied).encode(), TOKEN.encode())
 
 
 app.add_middleware(
@@ -157,7 +171,7 @@ LAN = {"enabled": False}  # set by --host 0.0.0.0
 def index(t: str = "") -> HTMLResponse:
     # On localhost the page carries the token (other sites cannot read it: same-origin policy).
     # On the LAN, the page itself needs the token link printed in the console.
-    if LAN["enabled"] and not secrets.compare_digest(t, TOKEN):
+    if LAN["enabled"] and not token_ok(t):
         return HTMLResponse(
             "<h3>video-factory: open the link printed in the console (it contains the access token).</h3>", 401
         )
@@ -168,7 +182,7 @@ def index(t: str = "") -> HTMLResponse:
 @app.get("/classic", response_class=HTMLResponse)
 def classic(t: str = "") -> HTMLResponse:
     """The pre-v3 vanilla UI, kept as a fallback (owner decision)."""
-    if LAN["enabled"] and not secrets.compare_digest(t, TOKEN):
+    if LAN["enabled"] and not token_ok(t):
         return HTMLResponse("<h3>video-factory: open the link printed in the console.</h3>", 401)
     return HTMLResponse((STATIC / "index.html").read_text(encoding="utf-8").replace("__VF_TOKEN__", TOKEN))
 
@@ -336,19 +350,67 @@ def engines_health(refresh: bool = False) -> dict[str, Any]:
 @app.get("/api/onboarding")
 def onboarding() -> dict[str, Any]:
     """What the first-run modal needs: is the brain connected, what can the demo show."""
+    from llm.providers import PROVIDER_KEYS, PROVIDER_NAMES
     from ui import studio
 
     cfg = settings.load()["llm"]
-    key = {"gemini": "GEMINI_API_KEY", "openai": "OPENAI_API_KEY"}.get(cfg["provider"])
+    key = PROVIDER_KEYS.get(cfg["provider"])
+    _pkg = studio._pkg_version
     return {
         "provider": cfg["provider"],
         "key_name": key,
-        "key_set": bool(settings.env(key)) if key else True,
+        # a backup brain with a key (Settings > Backup brains) can write scripts too
+        "key_set": (bool(settings.env(key)) if key else True)
+        or any(settings.env(PROVIDER_KEYS[p]) for p in cfg.get("fallback_providers", []) if p in PROVIDER_KEYS),
+        # what the organ transplant can offer (Stitched Engines)
+        "brains": {p: (bool(settings.env(PROVIDER_KEYS[p])) if p in PROVIDER_KEYS else True) for p in PROVIDER_NAMES},
+        "voices": {"edge-tts": bool(_pkg("edge-tts")), "kokoro": bool(_pkg("kokoro"))},
+        "voice_engine": settings.load()["defaults"].get("voice_engine", "edge-tts"),
         "engines": studio.engines_summary(),
         "projects": len([p for p in PROJECTS.glob("*/script.json") if not p.parent.name.startswith("_")]),
         "rendered": len(paths.project_ids()),
         "demo": studio.demo_assets(),
     }
+
+
+VOICE_CACHE = ROOT / ".cache" / "voice-preview"
+
+
+def _voices_public() -> dict[str, Any]:
+    from common import voices
+
+    return voices.public()
+
+
+@app.get("/api/voice/preview")
+async def voice_preview(text: str = "", voice: str = "", style: str = "", language: str = "english") -> FileResponse:
+    """A few seconds of a narrator (Edge-TTS, cached). For the Style Picker's ghost voice.
+
+    No text: the style's own sample line. No voice: the style's narrator (or the language's default voice).
+    """
+    import hashlib
+
+    from common import voices
+
+    if voice and not all(c.isalnum() or c in "-_" for c in voice) or len(voice) > 60:
+        raise HTTPException(400, "voice: letters, digits, - and _ only")
+    if text and len(" ".join(text.split())) < 3:
+        raise HTTPException(400, "text is too short to read aloud")
+    text = " ".join((text or voices.sample_line(style, language)).split())[:220]
+    voice = voices.voice_for(style, language, voice or None)["voice"]
+    if "Neural" not in voice:  # a Kokoro voice id; the preview always speaks through Edge-TTS
+        voice = voices.LANGUAGES[voices.language_key(language)]["default_voice"]
+    VOICE_CACHE.mkdir(parents=True, exist_ok=True)
+    dest = VOICE_CACHE / f"{hashlib.sha1(f'{voice}|{text}'.encode()).hexdigest()[:20]}.mp3"
+    if not dest.exists() or dest.stat().st_size == 0:
+        import edge_tts
+
+        try:
+            await asyncio.wait_for(edge_tts.Communicate(text, voice).save(str(dest)), timeout=25)
+        except Exception as exc:  # noqa: BLE001 - edge_tts raises several transport errors
+            dest.unlink(missing_ok=True)
+            raise HTTPException(502, f"the voice did not answer ({type(exc).__name__})") from exc
+    return FileResponse(dest, media_type="audio/mpeg", headers={"Cache-Control": "private, max-age=86400"})
 
 
 @app.get("/api/demo/batch")
@@ -372,6 +434,14 @@ def _slug_ok(slug: str) -> str:
     return slug
 
 
+def _inside(rel_path: str, root: Path, field: str) -> Path:
+    """A repo-relative path from a request, refused unless it resolves inside `root`."""
+    p = (ROOT / rel_path).resolve()
+    if not p.is_relative_to(root.resolve()):
+        raise HTTPException(400, f"{field} must be inside {root.relative_to(ROOT).as_posix()}/")
+    return p
+
+
 @app.get("/api/options")
 def options() -> dict[str, Any]:
     return {
@@ -384,6 +454,7 @@ def options() -> dict[str, Any]:
         "visual_types": VISUAL_TYPES,
         "templates": {s: REGISTRY.for_style(s).public() for s in sorted(ROUTES)},
         "grounding": settings.load()["llm"].get("grounding", True),
+        **_voices_public(),
     }
 
 
@@ -406,9 +477,30 @@ def projects() -> list[dict[str, Any]]:
                 "scenes": len(s.get("scenes", [])),
                 "rendered": paths.find(p.parent.name, "mp4") is not None,
                 "needs_approval": bool(s.get("blueprint")) and s.get("approval") != "approved",
+                "language": s.get("language", "english"),
+                "voice": (s.get("voice") or {}).get("voice", ""),
+                "duration_sec": round(
+                    sum(len(str(sc.get("narration", "")).split()) for sc in s.get("scenes", [])) / 2.6
+                ),
+                "mtime": p.stat().st_mtime,
             }
         )
+    published = _published_ids()
+    for row in out:
+        row["published"] = row["slug"] in published
+        # the three shelves on the Operating Table: written -> rendered -> out in the world
+        row["stage"] = "published" if row["published"] else "rendered" if row["rendered"] else "script"
     return out
+
+
+def _published_ids() -> set[str]:
+    try:
+        from common import db
+
+        with closing(sqlite3.connect(db.DB_PATH)) as conn:
+            return {r[0] for r in conn.execute("SELECT DISTINCT project_id FROM published")}
+    except sqlite3.Error:
+        return set()
 
 
 @app.get("/api/projects/{slug}")
@@ -466,6 +558,16 @@ def write_script_job(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
         args += ["--platforms", ",".join(body["platforms"])]
     if body.get("overwrite"):
         args.append("--overwrite")
+    from common import voices
+
+    if body.get("language"):
+        if body["language"] not in voices.LANGUAGES:
+            raise HTTPException(400, f"language must be one of {', '.join(voices.LANGUAGES)}")
+        args += ["--language", body["language"]]
+    if body.get("voice"):
+        if body["voice"] not in voices.VOICE_IDS:
+            raise HTTPException(400, "unknown voice")
+        args += ["--voice", body["voice"]]
     if "grounding" in body:
         args.append("--ground" if body["grounding"] else "--no-ground")
     return jobs.submit("llm", f"{'keep script' if mode == 'script' else 'write script'}: {label}", args).public()
@@ -487,14 +589,22 @@ def render_job(slug: str, body: dict[str, Any] = Body(default={})) -> dict[str, 
 
 
 # ------------------------------------------------------------------ Ideas (reference videos)
+VIDEO_EXTS = (".mp4", ".mov", ".webm", ".mkv", ".m4v")
+
+
 @app.post("/api/analyze")
 def analyze(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
     urls = [u.strip() for u in body.get("urls", []) if str(u).strip()]
     if not urls:
         raise HTTPException(400, "add at least one link or file path")
     for u in urls:
-        if not (u.startswith(("https://", "http://")) or Path(u).exists()):
-            raise HTTPException(400, f"not a URL or existing file: {u}")
+        if u.startswith(("https://", "http://")):
+            continue
+        # Local files must be videos: the analyzer copies them under analyzer/work/ (served by /files/),
+        # so any other path would let a caller copy out .env or cookie files.
+        p = Path(u)
+        if p.suffix.lower() not in VIDEO_EXTS or not p.is_file():
+            raise HTTPException(400, f"not a URL or an existing video file ({', '.join(VIDEO_EXTS)}): {u}")
     style = str(body.get("style") or "my_style")
     if body.get("depth") in ("fast", "detailed"):  # plain labels in the UI; the analyzer's own mode names stay internal
         body["mode"] = {"fast": "hook", "detailed": "condensed"}[body["depth"]]
@@ -624,7 +734,7 @@ def batch_sample() -> Response:
 async def batch_preview_file(file: UploadFile = File(...)) -> dict[str, Any]:
     from batch import sheet
 
-    raw = await file.read()
+    raw = await file.read(5_000_001)  # read at most one byte past the limit
     if len(raw) > 5_000_000:
         raise HTTPException(413, "spreadsheet is larger than 5 MB")
     try:
@@ -996,11 +1106,18 @@ def add_schedule_job(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
     jid = _slug_ok(str(body.get("id", "")))
     if any(j["id"] == jid for j in data["jobs"]):
         raise HTTPException(400, "a job with that id exists")
+    project = _slug_ok(str(body.get("project") or jid))
+    kind = body.get("type", "generate_and_upload")
+    if kind not in ("generate_and_upload", "generate_only", "upload_only"):
+        raise HTTPException(400, "type must be generate_and_upload, generate_only or upload_only")
+    script = str(body.get("script_or_prompt") or f"projects/{project}/script.json")
+    if script.endswith(".json") or "/" in script or "\\" in script:
+        _inside(script, PROJECTS, "script_or_prompt")  # a path must stay in projects/; plain text is a prompt
     job = {
         "id": jid,
         "enabled": bool(body.get("enabled", True)),
-        "type": body.get("type", "generate_and_upload"),
-        "script_or_prompt": body.get("script_or_prompt") or f"projects/{body.get('project', jid)}/script.json",
+        "type": kind,
+        "script_or_prompt": script,
         "generate_at": body.get("generate_at") or None,
         "upload_at": body.get("upload_at") or None,
         "platforms": body.get("platforms") or ["youtube"],
@@ -1008,10 +1125,13 @@ def add_schedule_job(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
     if body.get("visibility"):
         job["visibility"] = body["visibility"]
     if job["type"] == "upload_only":
-        found = paths.find(str(body.get("project", jid)), "meta")
-        job["meta"] = body.get("meta") or (
-            rel(found) if found else f"output/{body.get('project', jid)}/{body.get('project', jid)}.meta.json"
-        )
+        found = paths.find(project, "meta")
+        meta = str(body.get("meta") or (rel(found) if found else f"output/{project}/{project}.meta.json"))
+        # The meta file names the video that gets uploaded, so it must be one of ours.
+        if not meta.endswith(".meta.json"):
+            raise HTTPException(400, "meta must be an output/<id>/<id>.meta.json file")
+        _inside(meta, OUTPUT, "meta")
+        job["meta"] = meta
     data["jobs"].append({k: v for k, v in job.items() if v is not None})
     _write_schedule(data)
     return {"ok": True}
@@ -1200,6 +1320,10 @@ def get_settings() -> dict[str, Any]:
 @app.put("/api/settings/prefs")
 def put_prefs(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
     allowed = {"llm", "defaults", "publish", "analytics"}
+    channel = str((body.get("analytics") or {}).get("channel_url") or "").strip()
+    if channel and not channel.startswith(("https://", "http://")):
+        # It reaches yt-dlp's argument list; "--exec ..." would otherwise be read as an option.
+        raise HTTPException(400, "channel URL must start with https://")
     return settings.save_prefs({k: v for k, v in body.items() if k in allowed})
 
 
@@ -1214,7 +1338,7 @@ def put_secrets(body: dict[str, str] = Body(...)) -> dict[str, Any]:
 
 @app.post("/api/settings/youtube-client")
 async def upload_youtube_client(file: UploadFile = File(...)) -> dict[str, Any]:
-    raw = await file.read()
+    raw = await file.read(64_001)
     if len(raw) > 64_000:
         raise HTTPException(400, "file too large for an OAuth client JSON")
     try:
@@ -1263,6 +1387,15 @@ def test_llm() -> dict[str, Any]:
 @app.post("/api/settings/gemini-models")
 def gemini_models() -> dict[str, Any]:
     return jobs.submit("llm", "list Gemini models", ["-m", "llm.cli", "models"]).public()
+
+
+@app.post("/api/settings/models/{provider}")
+def provider_models(provider: str) -> dict[str, Any]:
+    """Models the saved key can use (OpenRouter: free models only). Results land in the job log."""
+    if provider not in ("gemini", "groq", "openrouter"):
+        raise HTTPException(400, "provider must be gemini, groq or openrouter")
+    label = {"gemini": "Gemini", "groq": "Groq", "openrouter": "OpenRouter free"}[provider]
+    return jobs.submit("llm", f"list {label} models", ["-m", "llm.cli", "models", "--provider", provider]).public()
 
 
 @app.post("/api/settings/login")

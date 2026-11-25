@@ -34,6 +34,8 @@ MOODS = ("chill", "documentary", "upbeat", "dramatic")
 ASPECTS = ("9:16", "16:9", "1:1")
 PLATFORMS = ("youtube", "instagram", "tiktok")
 MAX_ROWS = 100
+MAX_CELL = 20_000  # characters; a long script is ~1,500
+MAX_BYTES = 5 * 1024 * 1024
 INTERVALS = {"30m": 30, "45m": 45, "1h": 60, "2h": 120, "4h": 240}
 SAMPLE = [
     ["idea", "Why Costco sells $1.50 hot dogs", "Explain the loss-leader strategy behind the Costco hot dog", "concept_explainer",
@@ -55,42 +57,63 @@ def sheets_csv_url(url: str) -> str:
 
 
 def fetch_google_sheet(url: str) -> list[dict[str, str]]:
-    res = requests.get(sheets_csv_url(url), timeout=30)
-    if res.status_code in (401, 403) or "accounts.google.com" in res.url:
-        raise ValueError("the sheet is private: share it as 'Anyone with the link can view'")
-    if not res.ok:
-        raise ValueError(f"Google Sheets answered HTTP {res.status_code}")
-    return read_csv(res.content)
+    res = requests.get(sheets_csv_url(url), timeout=30, stream=True)
+    try:
+        if res.status_code in (401, 403) or "accounts.google.com" in res.url:
+            raise ValueError("the sheet is private: share it as 'Anyone with the link can view'")
+        if not res.ok:
+            raise ValueError(f"Google Sheets answered HTTP {res.status_code}")
+        body = bytearray()
+        for chunk in res.iter_content(64 * 1024):  # stop reading at the limit instead of buffering it all
+            body += chunk
+            if len(body) > MAX_BYTES:
+                raise ValueError("the sheet is larger than 5 MB")
+    finally:
+        close = getattr(res, "close", None)
+        if close:
+            close()
+    return read_csv(bytes(body))
 
 
 def read_csv(raw: bytes) -> list[dict[str, str]]:
     text = raw.decode("utf-8-sig", errors="replace")
-    return [
-        {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
-        for row in csv.DictReader(io.StringIO(text))
-    ]
+    out = []
+    for row in csv.DictReader(io.StringIO(text)):
+        # csv.DictReader puts surplus cells under a None key as a list; str() keeps them harmless.
+        out.append({(k or "").strip().lower(): _cell(str(v or "")) for k, v in row.items() if k})
+        if len(out) > MAX_ROWS:
+            break
+    return out
 
 
 def read_xlsx(raw: bytes) -> list[dict[str, str]]:
     from openpyxl import load_workbook
 
     ws = load_workbook(io.BytesIO(raw), read_only=True, data_only=True).active
-    rows = list(ws.iter_rows(values_only=True))
-    if not rows:
+    # Stream the rows and stop early: a small .xlsx can claim millions of rows or huge cells.
+    it = ws.iter_rows(values_only=True, max_col=len(COLUMNS) + 10)
+    first = next(it, None)
+    if first is None:
         return []
-    head = [str(h or "").strip().lower() for h in rows[0]]
+    head = [str(h or "").strip().lower() for h in first]
     out = []
-    for r in rows[1:]:
+    for r in it:
         if not any(c not in (None, "") for c in r):
             continue
         out.append(
             {
-                h: ("" if c is None else (c.strftime("%Y-%m-%d %H:%M") if isinstance(c, datetime) else str(c).strip()))
+                h: _cell("" if c is None else (c.strftime("%Y-%m-%d %H:%M") if isinstance(c, datetime) else str(c)))
                 for h, c in zip(head, r, strict=False)
                 if h
             }
         )
+        if len(out) > MAX_ROWS:  # one extra row so validate_rows can say "only the first 100 rows are used"
+            break
     return out
+
+
+def _cell(value: str) -> str:
+    return value.strip()[:MAX_CELL]
 
 
 def read_upload(name: str, raw: bytes) -> list[dict[str, str]]:

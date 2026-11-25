@@ -56,14 +56,14 @@ def download(src: str, media_dir: Path) -> Path:
     out_tpl = str(media_dir / "%(id)s.%(ext)s")
     run(
         [which("yt-dlp"), "-q", "--no-warnings", "-f", "bv*[height<=720]+ba/b[height<=720]/b",
-         "--merge-output-format", "mp4", "--socket-timeout", "30", "--retries", "3", "-o", out_tpl, src]
+         "--merge-output-format", "mp4", "--socket-timeout", "30", "--retries", "3", "-o", out_tpl, "--", src]
     )  # fmt: skip
     # Platform captions are only a cross-check (Whisper is the transcript of record), so they are
     # best-effort and limited to original English: "en.*" also matched every auto-translation
     # (en-de, en-fr, ...) and tripped YouTube's 429 rate limit.
     run(
         [which("yt-dlp"), "-q", "--no-warnings", "--skip-download", "--write-auto-sub", "--write-sub",
-         "--sub-langs", "en,en-orig", "--convert-subs", "srt", "-o", out_tpl, src],
+         "--sub-langs", "en,en-orig", "--convert-subs", "srt", "-o", out_tpl, "--", src],
         check=False,
     )  # fmt: skip
     return max(media_dir.glob("*.mp4"), key=lambda p: p.stat().st_mtime)
@@ -266,7 +266,9 @@ def estimate_sheets(sources: list[str], mode: str) -> int:
     total = 0
     for src in sources:
         if src.startswith(("http://", "https://")):
-            dur = float(run([which("yt-dlp"), "--no-warnings", "--print", "%(duration)s", src]).stdout.strip() or 0)
+            dur = float(
+                run([which("yt-dlp"), "--no-warnings", "--print", "%(duration)s", "--", src]).stdout.strip() or 0
+            )
         else:
             dur = probe(Path(src))["duration"]
         total += sheet_count(dur, mode)

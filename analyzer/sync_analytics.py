@@ -41,13 +41,21 @@ def match_by_title(entries: list[dict[str, Any]], projects: list[dict[str, Any]]
     return out
 
 
+def _web_url(url: str) -> str:
+    """Only http(s) URLs reach yt-dlp, and always after `--`, so a value like `--exec ...` is never an option."""
+    url = str(url).strip()
+    if not url.startswith(("https://", "http://")):
+        raise ValueError(f"not a web URL: {url[:80]!r}")
+    return url
+
+
 def fetch_video(url: str) -> dict[str, Any]:
-    res = run([which("yt-dlp"), "--dump-json", "--skip-download", "--no-warnings", url])
+    res = run([which("yt-dlp"), "--dump-json", "--skip-download", "--no-warnings", "--", _web_url(url)])
     return json.loads(res.stdout.strip().splitlines()[-1])
 
 
 def fetch_channel(url: str) -> list[dict[str, Any]]:
-    res = run([which("yt-dlp"), "--flat-playlist", "-J", "--no-warnings", url])
+    res = run([which("yt-dlp"), "--flat-playlist", "-J", "--no-warnings", "--", _web_url(url)])
     return list(json.loads(res.stdout).get("entries") or [])
 
 

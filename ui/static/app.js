@@ -3,6 +3,8 @@
 const T = window.VF_TOKEN;
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+// Only http(s) links are rendered as links; anything else (e.g. javascript:) becomes a dead #.
+const safeUrl = (u) => (/^https?:\/\//i.test(String(u ?? '').trim()) ? String(u).trim() : '#');
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const file = (rel) => `/files/${rel.split('/').map(encodeURIComponent).join('/')}?t=${encodeURIComponent(T)}&v=${Date.now() % 1e6}`;
 let OPTS = null;
@@ -151,7 +153,7 @@ function renderEditor() {
   $('#facts').innerHTML = facts.length ? `<b>Unverified facts (${script.grounded ? 'checked with Google Search' : 'not checked: no web grounding'}). Videos with unverified facts are held as “needs review” by the Safe-Publish Gate:</b><ul>${facts.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>` : '';
   const src = script.sources || [];
   $('#sources').hidden = !src.length;
-  $('#sources').innerHTML = src.length ? `Sources: ${src.map((s) => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`).join(' · ')}` : '';
+  $('#sources').innerHTML = src.length ? `Sources: ${src.map((s) => `<a href="${esc(safeUrl(s.url))}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`).join(' · ')}` : '';
   const types = OPTS.visual_types || [];
   $('#scenes').innerHTML = (script.scenes || []).map((s, i) => `
     <div class="scene" data-scene="${i}">
@@ -357,7 +359,7 @@ async function openInspector(slug) {
     ${issues.length ? `<div class="warn">${issues.map(esc).join('<br>')}</div>` : ''}
     ${facts.length ? `<div class="warn"><b>Fact check:</b> ${v.grounded ? 'checked against web sources, these are still unverified' : 'not web-checked'}. Verify before posting:<ul>${facts.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div>`
       : (v.claims?.length ? '<div class="okbox">All numeric claims were verified against cited sources.</div>' : '')}
-    ${(v.sources || []).length ? `<div class="s muted">Sources: ${v.sources.map((s) => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`).join(' · ')}</div>` : ''}
+    ${(v.sources || []).length ? `<div class="s muted">Sources: ${v.sources.map((s) => `<a href="${esc(safeUrl(s.url))}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`).join(' · ')}</div>` : ''}
     <label>Title</label><input data-m="title" value="${esc(m.title)}">
     <label>Description</label><textarea data-m="description" rows="4">${esc(m.description)}</textarea>
     <div class="row"><div><label>Hashtags</label><input data-m="hashtags" value="${esc((m.hashtags || []).join(' '))}"></div>
