@@ -58,7 +58,7 @@ def test_find_text_skips_thoughts_and_input() -> None:
 def test_gemini_falls_back_to_next_model_and_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
 
-    def fake_post(url: str, payload: dict, headers: dict, attempts: int = 4) -> FakeResponse:
+    def fake_post(url: str, payload: dict, headers: dict, attempts: int = 4, timeout: object = None) -> FakeResponse:
         calls.append(url.rsplit("/", 1)[-1])
         if "old-model" in url or payload.get("model") == "old-model":
             return FakeResponse(404, text="model not found")
@@ -70,7 +70,7 @@ def test_gemini_falls_back_to_next_model_and_endpoint(monkeypatch: pytest.Monkey
     g = P.GeminiProvider("gemini", "old-model", api_key="k", fallbacks=["new-model"])
     assert g.generate_json("hi", {"type": "object"}) == {"ok": True}
     assert g.model == "new-model"
-    assert calls == ["interactions", "old-model:generateContent", "interactions", "new-model:generateContent"]
+    assert calls == ["old-model:generateContent", "interactions", "new-model:generateContent"]
 
 
 def test_gemini_bad_key_is_clear(monkeypatch: pytest.MonkeyPatch) -> None:

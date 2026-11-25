@@ -16,9 +16,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from common import PROJECTS, paths, read_json, settings, write_json  # noqa: E402
+from common import PROJECTS, paths, read_json, settings, voices, write_json  # noqa: E402
 from common.slugs import title_slug  # noqa: E402
-from llm.providers import GeminiProvider, get_provider  # noqa: E402
+from llm.providers import get_provider  # noqa: E402
 from llm.tasks import script_from_text, write_metadata, write_script  # noqa: E402
 from prompts.script_templates import default_aspect_for  # noqa: E402
 
@@ -39,7 +39,10 @@ def cmd_write_script(a: argparse.Namespace) -> int:
     style = a.style or prefs["style"]
     aspect = a.aspect or default_aspect_for(style) or prefs["aspect_ratio"]
     mood = a.mood or prefs["music_mood"]
-    voice = {"engine": prefs["voice_engine"], "voice": prefs["voice"], "rate": prefs["rate"]}
+    language = voices.language_key(a.language or prefs.get("language"))
+    # the user's narrator, else the style's own (English) or the language's default voice
+    picked = a.voice or (prefs["voice"] if prefs.get("voice_engine") == "kokoro" and language == "english" else None)
+    voice = {**voices.voice_for(style, language, picked), "rate": prefs["rate"]}
     ground = cfg["llm"].get("grounding", True) if a.ground is None else a.ground
     say = lambda msg: print(f"  {msg}", flush=True)  # noqa: E731
     print(
@@ -66,13 +69,14 @@ def cmd_write_script(a: argparse.Namespace) -> int:
             mood=mood,
             duration_sec=a.duration or int(prefs["target_duration_sec"]),
             voice=voice,
-            language=prefs["language"],
+            language=voices.LANGUAGES[language]["prompt"],
             grounding=ground,
             on_status=say,
         )
         if a.title:
             script["title"] = a.title[:100]
     script["platforms"] = a.platforms.split(",") if a.platforms else ["youtube"]
+    script["language"] = language
     slug = explicit or title_slug(script["title"])  # the slug comes from the Title only, never prompt or script text
     proj = PROJECTS / slug
     proj.mkdir(parents=True, exist_ok=True)
@@ -114,10 +118,16 @@ def cmd_ping(_: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_models(_: argparse.Namespace) -> int:
-    p = get_provider("gemini")
-    assert isinstance(p, GeminiProvider)
-    for m in p.list_models():
+def cmd_models(a: argparse.Namespace) -> int:
+    """Models your key can use: Gemini, Groq, or OpenRouter (free ones only)."""
+    p = get_provider(a.provider or "gemini")
+    lister = getattr(p, "list_models", None)
+    if not lister:
+        print(f"{p.name} has no model list here; type the model name in Settings")
+        return 1
+    models = lister()
+    print(f"{len(models)} {p.name} model(s):")
+    for m in models:
         print(m)
     return 0
 
@@ -141,12 +151,16 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--duration", type=int)
     w.add_argument("--platforms", help="comma list, e.g. youtube,instagram")
     w.add_argument("--overwrite", action="store_true")
+    w.add_argument("--language", choices=list(voices.LANGUAGES), help="english | hinglish | hindi")
+    w.add_argument("--voice", help="narrator id, e.g. hi-IN-SwaraNeural (default: the style's narrator)")
     w.set_defaults(func=cmd_write_script)
     m = sub.add_parser("metadata")
     m.add_argument("--slug", required=True)
     m.set_defaults(func=cmd_metadata)
     sub.add_parser("ping").set_defaults(func=cmd_ping)
-    sub.add_parser("models").set_defaults(func=cmd_models)
+    m = sub.add_parser("models")
+    m.add_argument("--provider", choices=["gemini", "groq", "openrouter"], default="gemini")
+    m.set_defaults(func=cmd_models)
     a = p.parse_args(argv)
     return a.func(a)
 

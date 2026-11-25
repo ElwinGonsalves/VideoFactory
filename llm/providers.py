@@ -21,8 +21,12 @@ import requests
 
 from common import settings
 
-TIMEOUT = 120
+TIMEOUT = (10, 120)  # connect fast-fails (dead network / blocked host); a long script may take ~2 min to write
 RETRY_STATUS = {429, 500, 502, 503, 504}
+GEMINI_TIMEOUT = (10, 60)  # per request: a 50 s script normally comes back in 10-30 s
+GEMINI_BUDGET_S = 180  # all Gemini models and endpoints together, so a backup brain still gets its turn
+NET_ATTEMPTS = 2  # unreachable host: give up quickly so the fallback chain can try another provider
+MAX_429_WAIT = 6.0  # seconds; a longer Retry-After means "quota gone", better served by the next model
 
 
 def _b64(path: Path) -> str:
@@ -41,13 +45,16 @@ class GroundingUnavailable(LLMError):
     """Google Search grounding is not available (free tier, no permission, provider without it)."""
 
 
-def _post(url: str, payload: dict[str, Any], headers: dict[str, str], attempts: int = 4) -> requests.Response:
+def _post(
+    url: str, payload: dict[str, Any], headers: dict[str, str], attempts: int = 4, timeout: Any = None
+) -> requests.Response:
     last: requests.Response | None = None
     for i in range(attempts):
         try:
-            res = requests.post(url, json=payload, headers=headers, timeout=TIMEOUT)
+            res = requests.post(url, json=payload, headers=headers, timeout=timeout or TIMEOUT)
         except requests.RequestException as exc:
-            if i == attempts - 1:
+            # A read timeout means the model is stuck, not a network blip: retrying doubles the wait.
+            if isinstance(exc, requests.ReadTimeout) or i >= min(attempts, NET_ATTEMPTS) - 1:
                 raise LLMError(f"cannot reach {url.split('?')[0]}: {exc}") from exc
             time.sleep(2**i)
             continue
@@ -55,7 +62,10 @@ def _post(url: str, payload: dict[str, Any], headers: dict[str, str], attempts: 
             return res
         last = res
         retry_after = res.headers.get("Retry-After")
-        time.sleep(float(retry_after) if retry_after and retry_after.isdigit() else 2 ** (i + 1))
+        wait = float(retry_after) if retry_after and retry_after.replace(".", "", 1).isdigit() else 2 ** (i + 1)
+        if res.status_code == 429 and (wait > MAX_429_WAIT or i >= 1):
+            return res  # quota, not a blip: let the caller move to the next model / provider now
+        time.sleep(min(wait, 30))
     assert last is not None
     return last
 
@@ -156,7 +166,7 @@ class GeminiProvider(Provider):
             payload["system_instruction"] = system
         if schema:
             payload["response_format"] = {"type": "text", "mime_type": "application/json", "schema": schema}
-        return _post(f"{self.base}/interactions", payload, self._headers())
+        return _post(f"{self.base}/interactions", payload, self._headers(), timeout=GEMINI_TIMEOUT)
 
     def _generate_content(self, model: str, prompt: str, schema: dict | None, system: str) -> requests.Response:
         cfg: dict[str, Any] = {"temperature": self.temperature}
@@ -165,16 +175,27 @@ class GeminiProvider(Provider):
         payload: dict[str, Any] = {"contents": [{"role": "user", "parts": [{"text": prompt}]}], "generationConfig": cfg}
         if system:
             payload["systemInstruction"] = {"parts": [{"text": system}]}
-        return _post(f"{self.base}/models/{model}:generateContent", payload, self._headers())
+        return _post(f"{self.base}/models/{model}:generateContent", payload, self._headers(), timeout=GEMINI_TIMEOUT)
 
     def _call(self, prompt: str, schema: dict | None, system: str) -> str:
         from llm import usage
 
         usage.check_limit()
-        errors = []
+        errors: list[str] = []
+        deadline = time.monotonic() + GEMINI_BUDGET_S
+        # generateContent first: it is the long-standing endpoint. /interactions is newer and has been seen to
+        # hang until the read timeout for some models, so it is only the second try.
         for model in [self.model, *[m for m in self.fallbacks if m != self.model]]:
-            for call in (self._interactions, self._generate_content):
-                res = call(model, prompt, schema, system)
+            for call in (self._generate_content, self._interactions):
+                if time.monotonic() > deadline:
+                    errors.append(f"gave up after {GEMINI_BUDGET_S}s")
+                    raise LLMError("Gemini failed. " + " | ".join(errors[-4:]))
+                try:
+                    res = call(model, prompt, schema, system)
+                except LLMError as exc:  # timeout / connection reset: try the other endpoint, then the next model
+                    errors.append(f"{model} via {call.__name__.strip('_')}: {str(exc)[-120:]}")
+                    print(f"  {model} via {call.__name__.strip('_')} did not answer; trying the next one", flush=True)
+                    continue
                 if res.ok:
                     text = _find_text(res.json())
                     if text:
@@ -309,18 +330,56 @@ class OpenAICompatProvider(Provider):
     api_key: str = ""
     base_url: str = "https://api.openai.com/v1"
 
+    key_name: str = "OPENAI_API_KEY"
+    label: str = "OpenAI-compatible"
+    # json_schema (strict structured output) | json_object (JSON mode + schema in the prompt). Groq and most
+    # free OpenRouter models only do JSON mode, so they get the schema spelled out in the prompt instead.
+    json_mode: str = "json_schema"
+    extra_headers: dict[str, str] = field(default_factory=dict)
+
+    def _headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json", **self.extra_headers}
+
     def _chat(self, prompt: str, system: str, schema: dict | None) -> str:
         if not self.api_key:
-            raise LLMError("OPENAI_API_KEY is not set. Add it in Settings.")
+            raise LLMError(f"{self.key_name} is not set. Add it in Settings.")
+        if schema and self.json_mode == "json_object":
+            prompt = f"{prompt}\n\nReply with one JSON object only, matching this JSON Schema:\n{json.dumps(schema)}"
         messages = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": prompt}]
         payload: dict[str, Any] = {"model": self.model, "messages": messages, "temperature": self.temperature}
         if schema:
-            payload["response_format"] = {"type": "json_schema", "json_schema": {"name": "out", "schema": schema}}
-        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        res = _post(f"{self.base_url.rstrip('/')}/chat/completions", payload, headers)
+            payload["response_format"] = (
+                {"type": "json_object"}
+                if self.json_mode == "json_object"
+                else {"type": "json_schema", "json_schema": {"name": "out", "schema": schema}}
+            )
+        url = f"{self.base_url.rstrip('/')}/chat/completions"
+        res = _post(url, payload, self._headers())
+        if res.status_code == 400 and schema and "response_format" in res.text:
+            # this model has no JSON mode at all: ask in words, extract_json still finds the object
+            payload.pop("response_format")
+            res = _post(url, payload, self._headers())
+        if res.status_code in (401, 403):
+            raise LLMError(f"{self.label} rejected the API key ({res.status_code}). Check {self.key_name} in Settings.")
+        if res.status_code == 429:
+            raise LLMError(
+                f"{self.label} rate limit reached (429) for {self.model}. Wait a minute or pick another model."
+            )
         if not res.ok:
-            raise LLMError(f"OpenAI-compatible HTTP {res.status_code}: {res.text[:200]}")
-        return res.json()["choices"][0]["message"]["content"]
+            raise LLMError(f"{self.label} HTTP {res.status_code}: {res.text[:200]}")
+        content = (res.json().get("choices") or [{}])[0].get("message", {}).get("content") or ""
+        if not content.strip():
+            raise LLMError(f"{self.label} returned an empty answer from {self.model}")
+        return content
+
+    def list_models(self) -> list[str]:
+        res = requests.get(f"{self.base_url.rstrip('/')}/models", headers=self._headers(), timeout=TIMEOUT)
+        if not res.ok:
+            raise LLMError(f"{self.label} HTTP {res.status_code}: {res.text[:200]}")
+        ids = sorted(m["id"] for m in res.json().get("data", []) if m.get("id"))
+        if self.name == "openrouter":  # the free ones are what this project is for
+            ids = [i for i in ids if i.endswith(":free")]
+        return ids
 
     def generate_text(self, prompt: str, system: str = "") -> str:
         return self._chat(prompt, system, None)
@@ -337,17 +396,109 @@ class OpenAICompatProvider(Provider):
             "messages": messages,
             "response_format": {"type": "json_schema", "json_schema": {"name": "out", "schema": schema}},
         }
-        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        res = _post(f"{self.base_url.rstrip('/')}/chat/completions", payload, headers)
+        if self.json_mode == "json_object":
+            payload["response_format"] = {"type": "json_object"}
+            content[0]["text"] += (
+                f"\n\nReply with one JSON object only, matching this JSON Schema:\n{json.dumps(schema)}"
+            )
+        res = _post(f"{self.base_url.rstrip('/')}/chat/completions", payload, self._headers())
         if not res.ok:
-            raise LLMError(f"OpenAI-compatible vision HTTP {res.status_code}: {res.text[:200]}")
+            raise LLMError(f"{self.label} vision HTTP {res.status_code} ({self.model}): {res.text[:200]}")
         return extract_json(res.json()["choices"][0]["message"]["content"])
 
 
-def get_provider(name: str | None = None) -> Provider:
+PROVIDER_NAMES = ("gemini", "groq", "openrouter", "ollama", "openai")
+# Provider -> the .env key it needs (ollama needs none). Used to pick fallbacks that are actually set up.
+PROVIDER_KEYS = {
+    "gemini": "GEMINI_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "openai": "OPENAI_API_KEY",
+}
+
+
+@dataclass
+class ChainProvider(Provider):
+    """The chosen provider first; on a failure (bad key, quota, outage, empty answer) the next one that has a key.
+
+    Grounded research stays on the first provider only: it is optional and has its own fallback.
+    """
+
+    chain: list[Provider] = field(default_factory=list)
+
+    def _try(self, method: str, *args: Any) -> Any:
+        errors: list[str] = []
+        for p in self.chain:
+            try:
+                out = getattr(p, method)(*args)
+                if errors:
+                    print(f"  used {p.name}:{p.model} after: {'; '.join(errors)}", flush=True)
+                return out
+            except GroundingUnavailable:
+                raise
+            except LLMError as exc:
+                errors.append(f"{p.name} failed ({str(exc)[:140]})")
+        raise LLMError(" | ".join(errors) or "no language model is configured")
+
+    def generate_text(self, prompt: str, system: str = "") -> str:
+        return self._try("generate_text", prompt, system)
+
+    def generate_json(self, prompt: str, schema: dict[str, Any], system: str = "") -> Any:
+        return self._try("generate_json", prompt, schema, system)
+
+    def vision_json(self, prompt: str, schema: dict[str, Any], images: list[Path], system: str = "") -> Any:
+        return self._try("vision_json", prompt, schema, images, system)
+
+    def grounded_research(self, query: str, system: str = "") -> dict[str, Any]:
+        return self.chain[0].grounded_research(query, system)
+
+
+def get_provider(name: str | None = None, *, chain: bool = True) -> Provider:
+    """The configured provider, wrapped with fallbacks from `llm.fallback_providers` that have a key."""
     cfg = settings.load()["llm"]
-    name = name or cfg["provider"]
+    first = single_provider(name or cfg["provider"])
+    if not chain or name:
+        return first
+    rest = [
+        single_provider(n)
+        for n in cfg.get("fallback_providers", [])
+        if n != first.name and n in PROVIDER_NAMES and (n not in PROVIDER_KEYS or settings.env(PROVIDER_KEYS[n]))
+    ]
+    if not rest:
+        return first
+    return ChainProvider(first.name, first.model, first.temperature, chain=[first, *rest])
+
+
+def single_provider(name: str) -> Provider:
+    cfg = settings.load()["llm"]
     temp = float(cfg.get("temperature", 0.8))
+    if name == "groq":
+        return OpenAICompatProvider(
+            "groq",
+            cfg.get("groq_model") or "llama-3.3-70b-versatile",
+            temp,
+            api_key=settings.env("GROQ_API_KEY"),
+            base_url="https://api.groq.com/openai/v1",
+            key_name="GROQ_API_KEY",
+            label="Groq",
+            json_mode="json_object",
+        )
+    if name == "openrouter":
+        return OpenAICompatProvider(
+            "openrouter",
+            cfg.get("openrouter_model") or "meta-llama/llama-3.3-70b-instruct:free",
+            temp,
+            api_key=settings.env("OPENROUTER_API_KEY"),
+            base_url="https://openrouter.ai/api/v1",
+            key_name="OPENROUTER_API_KEY",
+            label="OpenRouter",
+            json_mode="json_object",
+            # OpenRouter's app attribution headers (optional, no personal data)
+            extra_headers={
+                "HTTP-Referer": "https://github.com/ElwinGonsalves/VideoFactory",
+                "X-Title": "video-factory",
+            },
+        )
     if name == "gemini":
         return GeminiProvider(
             "gemini",
@@ -368,4 +519,4 @@ def get_provider(name: str | None = None) -> Provider:
             api_key=settings.env("OPENAI_API_KEY"),
             base_url=settings.env("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         )
-    raise LLMError(f"unknown LLM provider '{name}' (use gemini, ollama or openai)")
+    raise LLMError(f"unknown LLM provider '{name}' (use {', '.join(PROVIDER_NAMES)})")

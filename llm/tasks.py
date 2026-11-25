@@ -299,8 +299,13 @@ def normalize_script(
     grounding: dict[str, Any] | None = None,
     max_scenes: int = 12,
 ) -> dict[str, Any]:
+    raw = _unwrap_script(raw)
     scenes = []
     for s in raw.get("scenes") or []:
+        if isinstance(s, str):  # a bare list of narration lines
+            s = {"narration": s}
+        if not isinstance(s, dict):
+            continue
         narration = _clip(s.get("narration"), 400)
         if not narration:
             continue
@@ -328,6 +333,21 @@ def normalize_script(
         "claims": claims,
         "facts_to_verify": [c["text"] for c in claims if not c["verified"]][:12],
     }
+
+
+def _unwrap_script(raw: Any) -> dict[str, Any]:
+    """Accept the shapes small models drift into: a bare scene list, {"script": {...}}, or "Scenes"."""
+    if isinstance(raw, list):
+        return {"scenes": raw}
+    if not isinstance(raw, dict):
+        return {}
+    if not raw.get("scenes"):
+        for k, v in raw.items():
+            if k.lower() == "scenes" and isinstance(v, list):
+                return {**raw, "scenes": v}
+            if isinstance(v, dict) and v.get("scenes"):
+                return {**raw, **v}
+    return raw
 
 
 def normalize_hashtag(tag: str) -> str:
@@ -569,16 +589,17 @@ def write_script(
         f"{VISUAL_GUIDE}\n{_research_block(research)}\n"
         "cover_text is the frame-0 cover: 2-5 punchy words, no hashtags."
     )
-    raw = provider.generate_json(prompt, SCRIPT_SCHEMA, SYSTEM)
-    script = normalize_script(
-        raw,
-        style=style,
-        aspect=aspect,
-        mood=mood,
-        voice=voice,
-        grounding=research,
-        max_scenes=40 if template.family == "long_form" else 12,
-    )
+    opts = {"style": style, "aspect": aspect, "mood": mood, "voice": voice, "grounding": research,
+            "max_scenes": 40 if template.family == "long_form" else 12}  # fmt: skip
+    try:
+        script = normalize_script(provider.generate_json(prompt, SCRIPT_SCHEMA, SYSTEM), **opts)
+    except LLMError as exc:
+        if "usable scenes" not in str(exc):
+            raise
+        # one retry with the shape spelled out: small free models sometimes answer with a summary instead
+        print("  the model returned no usable scenes; asking once more", flush=True)
+        retry = prompt + '\n\nReturn a JSON object with a "scenes" array of at least 4 objects, each with "narration".'
+        script = normalize_script(provider.generate_json(retry, SCRIPT_SCHEMA, SYSTEM), **opts)
     script["template"] = template.family
     return script
 
@@ -639,7 +660,8 @@ def script_from_text(
         f"{template.prompt_block(max(15, len(text.split()) * 60 // 155))}\n"
         f"Visual options: {VISUAL_GUIDE}\n"
         f"{'The title is fixed.' if title else 'Also write a punchy title (<=70 chars).'} "
-        "Also give cover_text: 2-5 punchy words from the script.\n"
+        "Also give cover_text: 2-5 punchy words from the script. Write the title and cover_text in the "
+        "same language and script (Latin or Devanagari) as the narration.\n"
         f"SCENES:\n{numbered[:12000]}"
     )
     picked: dict[int, dict[str, Any]] = {}

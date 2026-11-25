@@ -22,6 +22,8 @@ SECRETS_DIR = ROOT / "config" / "secrets"  # OAuth tokens, client_secret.json
 SECRET_KEYS = (
     "GEMINI_API_KEY",
     "OPENAI_API_KEY",
+    "GROQ_API_KEY",
+    "OPENROUTER_API_KEY",
     "INSTAGRAM_ACCESS_TOKEN",
     "TIKTOK_ACCESS_TOKEN",
     "YOUTUBE_CLIENT_SECRET",
@@ -44,12 +46,17 @@ ENV_KEYS = (
 
 DEFAULTS: dict[str, Any] = {
     "llm": {
-        "provider": "gemini",  # gemini | ollama | openai
+        "provider": "gemini",  # gemini | groq | openrouter | ollama | openai
         "gemini_model": "gemini-4-hydrogen",
         # Tried in order when the chosen model is retired (404) or rate limited.
         "gemini_fallback_models": ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"],
         "ollama_model": "qwen2.5:7b",
         "openai_model": "gpt-4o-mini",
+        # Free-tier friendly alternatives (OpenAI-compatible APIs). Keys: GROQ_API_KEY, OPENROUTER_API_KEY.
+        "groq_model": "llama-3.3-70b-versatile",
+        "openrouter_model": "meta-llama/llama-3.3-70b-instruct:free",
+        # Tried in order when the chosen provider fails (bad key, quota, outage); skipped unless its key is set.
+        "fallback_providers": ["groq", "openrouter", "gemini"],
         "temperature": 0.8,
         # Google Search grounding for case studies/stats. Free-tier Gemini refuses it; scripts then fall back
         # to ungrounded writing and every numeric claim is marked unverified.
