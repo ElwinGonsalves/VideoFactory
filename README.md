@@ -2,7 +2,7 @@
 
 Local video and Shorts production with a web UI. Type a topic (or paste reference videos to learn a style from), approve the ideas you like, and get a captioned, music-ducked, -14 LUFS H.264/AAC MP4 at 9:16, 16:9 or 1:1, with a code-rendered thumbnail and AI titles/hashtags, ready to upload (unlisted by default) to YouTube, Instagram or TikTok, now or on a schedule.
 
-No Pexels and no paid APIs required. Voices come from Edge-TTS (free) or Kokoro (local, GPU), captions from faster-whisper (local, GPU), music from a bundled royalty-free library with Archive.org/Wikimedia fallbacks, sound effects are synthesized locally, footage comes from Wikimedia Commons, Archive.org and NASA (keyless), rendering from Remotion, Manim, handanim or explainroo (local). Writing (ideas, scripts, metadata) uses the Gemini free tier by default, Ollama for fully offline, or any OpenAI-compatible endpoint. Uploads use browser cookies via social-auto-upload, or the official APIs once your apps are approved.
+No Pexels and no paid APIs required. Voices come from Edge-TTS (free) or Kokoro (local, GPU), captions from faster-whisper (local, GPU), music from a bundled royalty-free library with Archive.org/Wikimedia fallbacks, sound effects are synthesized locally, footage comes from Wikimedia Commons, Archive.org and NASA (keyless), rendering from Remotion, Manim, handanim or explainroo (local). Writing (ideas, scripts, metadata) uses the Gemini free tier by default, Groq or OpenRouter free models, Ollama for fully offline, or any OpenAI-compatible endpoint; if one fails (bad key, used-up quota) the next one with a key takes over. Uploads use browser cookies via social-auto-upload, or the official APIs once your apps are approved.
 
 ## Start in under 5 minutes
 
@@ -85,6 +85,7 @@ video-factory is a creature stitched from independent open-source organs. Each d
 - [FIRST_VIDEO_GUIDE.md](docs/FIRST_VIDEO_GUIDE.md): first render, the UI, keys, cookie login, test upload
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): data flow, folder map, every JSON/YAML schema, UI security
 - [DEBUGGING.md](docs/DEBUGGING.md): FFmpeg, TTS, GPU, Remotion, LLM, yt-dlp, engines, ducking, cookies
+- [CONNECT_ACCOUNTS.md](docs/CONNECT_ACCOUNTS.md): YouTube and Instagram official APIs step by step, plus Telegram and Discord alerts
 - [SCHEDULER.md](docs/SCHEDULER.md): pre-flight, builder, gate, caps, running at startup, inspecting state
 - [BATCH_SHEETS.md](docs/BATCH_SHEETS.md): Excel / CSV / Google Sheets batches
 - [ADDING_STYLES.md](docs/ADDING_STYLES.md): blueprints from reference videos, scene types, transitions, engines, skills

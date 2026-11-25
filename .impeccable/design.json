@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-24T00:00:00Z",
+  "title": "Design System: Video Factory Studio",
+  "extensions": {
+    "colorMeta": {
+      "lab-950": {"role": "neutral", "displayName": "Laboratory Glass (ground)", "canonical": "#0a0f0c", "tonalRamp": ["#0a0f0c", "#0f1612", "#131c17", "#18231c", "#213027", "#2d4034", "#3e5647", "#618471"]},
+      "lab-400": {"role": "neutral", "displayName": "Lab Edge", "canonical": "#618471", "tonalRamp": ["#1d2a22", "#2d4034", "#3e5647", "#4f6c5b", "#618471", "#7c9b8a", "#9bb4a6", "#c4d4ca"]},
+      "bone": {"role": "neutral", "displayName": "Bone", "canonical": "#ecf2e8", "tonalRamp": ["#2f332d", "#4d544a", "#6d766a", "#8fa192", "#aebdaf", "#ccd8c9", "#ecf2e8", "#f8fbf6"]},
+      "moss": {"role": "neutral", "displayName": "Moss", "canonical": "#aebdaf"},
+      "fog": {"role": "neutral", "displayName": "Fog", "canonical": "#8fa192"},
+      "pumpkin": {"role": "primary", "displayName": "Jack-o'-Lantern", "canonical": "#ffa64d", "tonalRamp": ["#1c0f02", "#4a2609", "#7a3f0f", "#b8642a", "#e5862f", "#ffa64d", "#ffbd78", "#ffe0bf"]},
+      "volt": {"role": "secondary", "displayName": "Galvanic Current", "canonical": "#8ef0a6", "tonalRamp": ["#0c2414", "#1f5a33", "#2e7a48", "#43a063", "#62c783", "#8ef0a6", "#b5f6c6", "#e0fbe7"]},
+      "ghost": {"role": "secondary", "displayName": "Ectoplasm", "canonical": "#c2adff", "tonalRamp": ["#17122a", "#2c2447", "#43376b", "#5f4f96", "#8a73d1", "#c2adff", "#d9caff", "#efe8ff"]},
+      "candle": {"role": "tertiary", "displayName": "Candlelight", "canonical": "#ffd88a", "tonalRamp": ["#1f1806", "#3a2d0f", "#5c481a", "#8a6c29", "#c49a3d", "#ffd88a", "#ffe6b3", "#fff4dc"]},
+      "blood": {"role": "tertiary", "displayName": "Dracula's Kiss", "canonical": "#ff8b8b", "tonalRamp": ["#1f0a0a", "#3d1616", "#622222", "#8f3333", "#c95252", "#ff8b8b", "#ffb3b3", "#ffe0e0"]},
+      "pumpkin-ink": {"role": "primary", "displayName": "Pumpkin Ink", "canonical": "#1c0f02"}
+    },
+    "typographyMeta": {
+      "display": {"displayName": "Display (Big Shoulders)", "purpose": "Room names, modal titles, big numbers, the lever label and the It's alive! headline."},
+      "body": {"displayName": "Body (Work Sans)", "purpose": "Everything you read or type."},
+      "label": {"displayName": "Label (Work Sans 600)", "purpose": "Field labels, buttons and nav items, in sentence case."},
+      "mono": {"displayName": "Mono (JetBrains Mono)", "purpose": "Logs, file names, specimen tags, the R.I.P. plate."}
+    },
+    "shadows": [
+      {"name": "lift", "value": "0 10px 30px -12px rgb(0 0 0 / .7), 0 2px 6px -2px rgb(0 0 0 / .5)", "purpose": "Drawers, modals, the More sheet, tags pinned over images."},
+      {"name": "glow", "value": "0 0 0 1px rgb(142 240 166 / .35), 0 8px 28px -8px rgb(142 240 166 / .35)", "purpose": "Live organs, healthy engines, the lever while rendering, valid drop targets."},
+      {"name": "lantern", "value": "0 6px 20px -8px rgb(255 166 77 / .6)", "purpose": "Under the Jack-o'-Lantern primary button only."}
+    ],
+    "motion": [
+      {"name": "ease-arrive", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Overlays, page fades, ghosts arriving."},
+      {"name": "seam-current", "value": "stroke-dashoffset -16 over 0.9s linear, infinite", "purpose": "A stitch seam carrying current into the working organ."},
+      {"name": "page-bolt", "value": "clip reveal 160ms + flicker out, 500ms total", "purpose": "Lightning on every room switch."},
+      {"name": "coffin-open", "value": "lids 1.5s cubic-bezier(0.55, 0, 0.25, 1) after a 0.45s hold; lining fades by 2.4s", "purpose": "Dracula's Vault opening over each video."},
+      {"name": "bat-burst", "value": "2-2.9s per bat, about 3.5s overall", "purpose": "Finishing the setup guide."},
+      {"name": "click-zap", "value": "420ms ease-out", "purpose": "Sparks from primary buttons, a ring from others."},
+      {"name": "ghost-vanish", "value": "650ms after scrolling stops", "purpose": "Scroll ghosts leaving."}
+    ],
+    "breakpoints": [
+      {"name": "sm", "value": "640px"},
+      {"name": "md", "value": "768px", "purpose": "Sidebar replaces the bottom nav."},
+      {"name": "lg", "value": "1024px", "purpose": "Sidebar expands from the rail."},
+      {"name": "xl", "value": "1280px", "purpose": "Long-form status pill; two-column rooms."}
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one Jack-o'-Lantern action per view.",
+      "html": "<button class=\"ds-btn-primary\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72\"/><path d=\"m14 7 3 3\"/></svg>Write Script</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--color-pumpkin, #ffa64d); color: var(--color-pumpkin-ink, #1c0f02); font: 600 14px/1 'Work Sans', system-ui, sans-serif; box-shadow: 0 6px 20px -8px rgb(255 166 77 / .6); cursor: pointer; transition: background-color .15s, transform .15s; } .ds-btn-primary:hover { background: var(--color-pumpkin-hi, #ffbd78); } .ds-btn-primary:active { transform: scale(.98); } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-pumpkin, #ffa64d); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Every other action on a view.",
+      "html": "<button class=\"ds-btn-secondary\">Save</button>",
+      "css": ".ds-btn-secondary { height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--color-lab-500, #3e5647); background: var(--color-lab-800, #18231c); color: var(--color-bone, #ecf2e8); font: 600 14px/1 'Work Sans', system-ui, sans-serif; cursor: pointer; transition: border-color .15s, background-color .15s; } .ds-btn-secondary:hover { border-color: var(--color-lab-400, #618471); background: var(--color-lab-700, #213027); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--color-pumpkin, #ffa64d); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Every text input: lab-950 well, Lab Edge border, Jack-o'-Lantern focus.",
+      "html": "<label class=\"ds-field\"><span>What should the video explain?</span><input class=\"ds-input\" placeholder=\"e.g. Why Costco sells hot dogs for $1.50…\"></label>",
+      "css": ".ds-field { display: grid; gap: 6px; font: 600 14px/1.3 'Work Sans', system-ui, sans-serif; color: var(--color-bone, #ecf2e8); } .ds-input { height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid rgb(97 132 113 / .7); background: var(--color-lab-950, #0a0f0c); color: var(--color-bone, #ecf2e8); font: 400 15px 'Work Sans', system-ui, sans-serif; transition: border-color .15s, box-shadow .15s; } .ds-input::placeholder { color: var(--color-fog, #8fa192); } .ds-input:hover { border-color: var(--color-lab-400, #618471); } .ds-input:focus { outline: none; border-color: var(--color-pumpkin, #ffa64d); box-shadow: 0 0 0 2px rgb(255 166 77 / .35); }"
+    },
+    {
+      "name": "Nav Item",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Sidebar room: themed name over its plain name (The Two Names Rule).",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-item is-active\" href=\"#\"><span class=\"ds-nav-name\">Operating Table</span><span class=\"ds-nav-plain\">Render</span></a><a class=\"ds-nav-item\" href=\"#\"><span class=\"ds-nav-name\">Dracula's Vault</span><span class=\"ds-nav-plain\">Library</span></a></nav>",
+      "css": ".ds-nav { display: grid; gap: 4px; width: 216px; } .ds-nav-item { display: grid; min-height: 44px; padding: 4px 12px; align-content: center; border: 1px solid transparent; border-radius: 10px; color: var(--color-moss, #aebdaf); text-decoration: none; font: 600 15px/1.2 'Work Sans', system-ui, sans-serif; transition: background-color .15s, color .15s; } .ds-nav-item:hover { background: var(--color-lab-850, #131c17); color: var(--color-bone, #ecf2e8); } .ds-nav-item.is-active { background: var(--color-lab-800, #18231c); border-color: var(--color-lab-500, #3e5647); color: var(--color-bone, #ecf2e8); } .ds-nav-plain { font-size: 11px; font-weight: 400; color: var(--color-fog, #8fa192); } .ds-nav-item:focus-visible { outline: 2px solid var(--color-pumpkin, #ffa64d); outline-offset: 2px; }"
+    },
+    {
+      "name": "Specimen Tag",
+      "kind": "chip",
+      "refersTo": "specimen-tag",
+      "description": "Labels a style or engine; tilted when pinned to an image.",
+      "html": "<span class=\"ds-tag\">Remotion + Rough.js</span>",
+      "css": ".ds-tag { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border: 1px dashed var(--color-lab-400, #618471); border-radius: 6px; background: var(--color-lab-800, #18231c); color: var(--color-moss, #aebdaf); font: 400 12px 'JetBrains Mono', ui-monospace, monospace; transform: rotate(-2deg); }"
+    },
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Flat at rest: depth from the surface step, never a cast shadow.",
+      "html": "<section class=\"ds-panel\"><h3>The slab</h3><p>Scripts wait here until you bring them to life.</p></section>",
+      "css": ".ds-panel { max-width: 340px; padding: 24px; border: 1px solid var(--color-lab-700, #213027); border-radius: 16px; background: var(--color-lab-900, #0f1612); } .ds-panel h3 { margin: 0; font: 700 18px 'Work Sans', system-ui, sans-serif; color: var(--color-bone, #ecf2e8); } .ds-panel p { margin: 6px 0 0; font: 400 15px/1.5 'Work Sans', system-ui, sans-serif; color: var(--color-moss, #aebdaf); }"
+    },
+    {
+      "name": "The Lever",
+      "kind": "custom",
+      "refersTo": "lever",
+      "description": "The render control: pull it to bring a script to life.",
+      "html": "<button class=\"ds-lever\"><span class=\"ds-lever-plate\"><span class=\"ds-lever-knob\"></span></span><span><b>Render</b><small>Pull to bring it to life</small></span></button>",
+      "css": ".ds-lever { display: inline-flex; align-items: center; gap: 12px; height: 56px; padding: 6px 16px 6px 8px; border: 2px solid var(--color-pumpkin, #ffa64d); border-radius: 10px; background: var(--color-lab-850, #131c17); text-align: left; cursor: pointer; transition: border-color .2s, box-shadow .2s; } .ds-lever:hover { box-shadow: 0 0 20px -4px rgb(255 166 77 / .6); } .ds-lever:active { border-color: var(--color-volt, #8ef0a6); box-shadow: 0 0 0 3px rgb(142 240 166 / .15), 0 0 24px rgb(142 240 166 / .35); } .ds-lever:active .ds-lever-knob { transform: translateY(22px); } .ds-lever-plate { position: relative; width: 32px; height: 44px; border: 1px solid var(--color-lab-400, #618471); border-radius: 6px; background: var(--color-lab-950, #0a0f0c); box-shadow: inset 0 2px 6px rgb(0 0 0 / .6); } .ds-lever-knob { position: absolute; top: 2px; left: 4px; width: 22px; height: 8px; border-radius: 2px; background: linear-gradient(#ffbd78, #ffa64d 55%, #b8642a); transition: transform .25s cubic-bezier(.3,1.6,.5,1); } .ds-lever b { display: block; font: 700 20px/1 'Big Shoulders', 'Arial Narrow', sans-serif; color: var(--color-pumpkin, #ffa64d); } .ds-lever small { font: 400 12px 'Work Sans', system-ui, sans-serif; color: var(--color-moss, #aebdaf); } .ds-lever:focus-visible { outline: 2px solid var(--color-pumpkin, #ffa64d); outline-offset: 2px; }"
+    },
+    {
+      "name": "Stitch Stepper Node",
+      "kind": "custom",
+      "refersTo": "stitch-stepper",
+      "description": "One organ of the pipeline: done, working (with a live seam), or waiting.",
+      "html": "<div class=\"ds-steps\"><span class=\"ds-node is-done\">✓</span><svg class=\"ds-seam\" width=\"48\" height=\"4\"><line x1=\"0\" y1=\"2\" x2=\"48\" y2=\"2\"/></svg><span class=\"ds-node is-active\">●</span><svg class=\"ds-seam is-pending\" width=\"48\" height=\"4\"><line x1=\"0\" y1=\"2\" x2=\"48\" y2=\"2\"/></svg><span class=\"ds-node\">○</span></div>",
+      "css": ".ds-steps { display: flex; align-items: center; } .ds-node { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; border: 2px solid var(--color-lab-500, #3e5647); background: var(--color-lab-900, #0f1612); color: var(--color-fog, #8fa192); font: 700 14px 'Work Sans', sans-serif; } .ds-node.is-done { border-color: var(--color-volt, #8ef0a6); background: var(--color-volt-deep, #1f5a33); color: var(--color-volt, #8ef0a6); } .ds-node.is-active { border-color: var(--color-pumpkin, #ffa64d); color: var(--color-pumpkin, #ffa64d); box-shadow: 0 0 0 4px rgb(255 166 77 / .15), 0 0 18px rgb(142 240 166 / .35); } .ds-seam line { stroke: var(--color-volt, #8ef0a6); stroke-width: 2; stroke-dasharray: 6 10; animation: ds-current .9s linear infinite; } .ds-seam.is-pending line { stroke: var(--color-lab-500, #3e5647); stroke-dasharray: 3 6; animation: none; } @keyframes ds-current { to { stroke-dashoffset: -16; } } @media (prefers-reduced-motion: reduce) { .ds-seam line { animation: none; } }"
+    },
+    {
+      "name": "Studio Status Pill",
+      "kind": "custom",
+      "refersTo": "status-pill",
+      "description": "The one global status surface; opens the Activity Drawer.",
+      "html": "<button class=\"ds-pill\"><span class=\"ds-dot\"></span><b>Ready</b><span>· 3 Scheduled · Next upload in 45m</span></button>",
+      "css": ".ds-pill { display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 16px 0 12px; border: 1px solid var(--color-lab-600, #2d4034); border-radius: 999px; background: var(--color-lab-900, #0f1612); color: var(--color-moss, #aebdaf); font: 400 14px 'Work Sans', system-ui, sans-serif; cursor: pointer; transition: border-color .2s, box-shadow .2s; } .ds-pill b { color: var(--color-bone, #ecf2e8); } .ds-pill:hover { border-color: rgb(142 240 166 / .6); box-shadow: 0 0 0 1px rgb(142 240 166 / .35), 0 8px 28px -8px rgb(142 240 166 / .35); } .ds-dot { width: 10px; height: 10px; border-radius: 999px; background: var(--color-candle, #ffd88a); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Frankenstein's Studio",
+    "overview": "The app is one creature stitched together from open-source engines, and every room of the studio is part of its laboratory. You write a script in the Laboratory, lay it on the Operating Table, and pull a lever to bring it to life. The finished creature rests in Dracula's Vault until the Witching Hour carries it out into the world. The pipeline is shown as organs on one body, joined by seams that carry current only while that organ works.\n\nThe register is playful Halloween, built from classic monster movies (Frankenstein, Dracula, The Wolf Man, Night of the Living Dead, Hocus Pocus). Everyday work stays calm and legible. Theatre is saved for the moments that earn it: finishing setup, a render coming alive, switching rooms, opening the vault, banishing ghosts. Each room has a themed name, and its plain name always sits underneath, so nobody hunts for \"Library\".\n\nSurfaces are dark green-black Laboratory Glass. The loudest colour is the single Jack-o'-Lantern action per view, and the other signal colours each mean exactly one thing.",
+    "keyCharacteristics": [
+      "Green-black ground, never neutral grey or blue-black.",
+      "One Jack-o'-Lantern primary action per view; the render lever is that action on the Operating Table.",
+      "Status colour is semantic and fixed: Galvanic Current = live/healthy/done, Ectoplasm = scheduled (and ghosts), Candlelight = needs attention, Dracula's Kiss = failure.",
+      "Stitch seams (dashed vector lines) are the signature, and they animate only while work runs.",
+      "Theatrical effects are moments, not wallpaper. All of them are decorative (`aria-hidden`), stop under reduced motion, and switch off with Haunted effects.",
+      "Real artifacts over illustration: style cards are real Remotion frames, and the Vault plays the real MP4 in a phone frame."
+    ],
+    "rules": [
+      {"name": "The One Lantern Rule", "body": "One Jack-o'-Lantern button per view. A second action is secondary or ghost.", "section": "colors"},
+      {"name": "The Signal Means One Thing Rule", "body": "Galvanic Current, Ectoplasm, Candlelight and Dracula's Kiss are status. The single exception is the haunting itself: a ghost glows Ectoplasm and a spark glows Current because those colours are what they are made of.", "section": "colors"},
+      {"name": "The No Kicker Rule", "body": "No small uppercase tracked labels above headings. Section headings are real headings.", "section": "typography"},
+      {"name": "The Two Names Rule", "body": "A themed name never stands alone in navigation: the plain name (\"Render\", \"Library\") sits under it, and screen readers hear both.", "section": "typography"},
+      {"name": "The Flat-At-Rest Rule", "body": "No cast shadow on cards or rows. If something is not floating, alive or primary, its depth comes from its surface step.", "section": "elevation"}
+    ],
+    "dos": [
+      "Do use real rendered frames for any image of a style, and regenerate them with `scripts/render_style_cards.py`.",
+      "Do keep signal colours semantic (The Signal Means One Thing Rule).",
+      "Do keep theatrical effects to moments that matter: finishing setup, a render coming alive, switching rooms, opening a video, banishing ghosts. Mark them `aria-hidden`, use `pointer-events: none` unless they are the interaction (the wand), and keep them under about 3 seconds.",
+      "Do give every effect a reduced-motion path, and respect Apothecary > System > Haunted effects (`vf-calm`).",
+      "Do keep real materials (wood grain, brass, velvet) inside those moments only.",
+      "Do show the plain name under every themed room name (The Two Names Rule).",
+      "Do run `scripts/ui_audit.py` and `scripts/nav_check.py` on port 8766 after any layout change."
+    ],
+    "donts": [
+      "Don't add a second Jack-o'-Lantern button to a view.",
+      "Don't put materials, textures or bevels on everyday controls (buttons, fields, cards, rows).",
+      "Don't let an effect block, delay or cover a task, or play sound without a click.",
+      "Don't use dripping or \"spooky\" display fonts; Big Shoulders carries the poster voice.",
+      "Don't use small uppercase eyebrow labels above headings.",
+      "Don't bring back a persistent bottom jobs bar; job status belongs to the pill and the drawer."
+    ]
+  }
+}

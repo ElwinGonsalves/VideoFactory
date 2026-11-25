@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "name": "Impeccable design detector",
+  "description": "Kiro's stand-in for Impeccable's per-edit design hook (Kiro is not one of its supported harnesses): scan each edited UI file with the Impeccable detector and fix real findings.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": ["frontend/src/**/*.tsx", "frontend/src/**/*.ts", "frontend/src/**/*.css", "frontend/index.html"]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A UI file changed. Run the Impeccable detector on just that file: `& \"..\\.agents\\skills\\impeccable\\scripts\\impeccable.cmd\" detect --json <edited file>` from the video-factory folder. Real design problems (contrast, overflow, broken images, gradient text, design-system drift against DESIGN.md): fix them. A confident false positive: add the narrowest exception with `impeccable hooks ignore-value <rule> <value> --reason \"<who decided: evidence>\"` and say so. Unsure: leave it and say why in one line. Effects that DESIGN.md sanctions (the Haunting section: decorative, aria-hidden, reduced-motion safe) are not findings."
+  }
+}
