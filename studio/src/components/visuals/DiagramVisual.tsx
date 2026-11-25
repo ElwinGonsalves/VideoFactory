@@ -13,13 +13,32 @@ export const DiagramVisual: React.FC<VisualProps> = ({visual, theme, ratio}) => 
   const n = Math.max(1, items.length);
   const hub = {x: W / 2, y: portrait ? 640 : H / 2 + 30, r: portrait ? 150 : 140};
   const rx = portrait ? 340 : 600;
-  const ry = portrait ? 400 : 290;
+  let ry = portrait ? 400 : 290;
   const HubIcon = resolveIcon(visual.icon);
   const title = visual.heading ?? '';
+  // Keep the top node's label clear of the heading: measure both and push the diagram down by the overlap.
+  // Portrait has room below, so the whole diagram moves; landscape only lowers the top half (ry shrinks).
+  const titleSize = portrait ? 66 : 60;
+  const titleY = portrait ? 100 : 80;
+  const titleLines = title ? wrapLines(title, portrait ? 22 : 40, 2) : [];
+  const nodeR = portrait ? 84 : 78;
+  if (titleLines.length && n > 0) {
+    const titleBottom = titleY + (titleLines.length - 1) * titleSize * 1.15 + titleSize * 0.35;
+    const topExtra = (wrapLines(items[0] ?? '', 14, 2).length - 1) * 42;
+    const topLabelTop = hub.y - ry - nodeR - 34 - topExtra - 40; // cap height of a 40 px label
+    const overlap = titleBottom + 28 - topLabelTop;
+    if (overlap > 0) {
+      if (portrait) hub.y += overlap;
+      else {
+        hub.y += overlap / 2;
+        ry -= overlap / 2;
+      }
+    }
+  }
   return (
     <Stage ratio={ratio}>
       {title ? (
-        <Lines x={W / 2} y={portrait ? 100 : 80} lines={wrapLines(title, portrait ? 22 : 40, 2)} size={portrait ? 66 : 60}
+        <Lines x={W / 2} y={titleY} lines={titleLines} size={titleSize}
           fill={theme.text} font={theme.headingFont} />
       ) : null}
       {items.map((label, i) => {
@@ -27,7 +46,6 @@ export const DiagramVisual: React.FC<VisualProps> = ({visual, theme, ratio}) => 
         const nx = hub.x + rx * Math.cos(a);
         const ny = hub.y + ry * Math.sin(a);
         const delay = 8 + i * 14;
-        const nodeR = portrait ? 84 : 78;
         const lx = nx;
         const below = Math.sin(a) >= -0.2;
         const ly = below ? ny + nodeR + 50 : ny - nodeR - 34 - (wrapLines(label, 14, 2).length - 1) * 42;

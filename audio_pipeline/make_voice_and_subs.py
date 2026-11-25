@@ -197,6 +197,31 @@ def language_from_voice(voice: str) -> str | None:
     return KOKORO_LANGS.get(m.group(1)) if m else None
 
 
+def script_captions(texts: list[str], scenes: list[dict]) -> list[dict]:
+    """Word captions from the script text: each scene's words spread over its spoken span, by length.
+
+    Leaves a small lead-in and tail per scene (the TTS breathes there) and weights words by characters
+    plus a pause after punctuation, which tracks natural speech closely enough for word highlighting.
+    """
+    out: list[dict] = []
+    for text, sc in zip(texts, scenes, strict=False):
+        words = text.split()
+        if not words:
+            continue
+        start, end = float(sc["start"]), float(sc["end"])
+        span = max(0.2, end - start)
+        lead, tail = min(0.12, span * 0.05), min(0.25, span * 0.08)
+        weights = [len(w) + 2 + (3 if w[-1] in ",.!?;:।" else 0) for w in words]
+        total = sum(weights)
+        t = start + lead
+        usable = span - lead - tail
+        for w, wt in zip(words, weights, strict=True):
+            d = usable * wt / total
+            out.append({"word": w, "start": round(t, 3), "end": round(t + d * 0.92, 3)})
+            t += d
+    return out
+
+
 def run_pipeline(
     script_path: Path,
     out_dir: Path,
@@ -217,8 +242,13 @@ def run_pipeline(
     scenes = build_narration(texts, engine, voice, rate, narration)
     total = scenes[-1]["end"]
 
-    lang = language_from_voice(voice)
-    words = transcribe_words(narration, whisper_model, device, lang)
+    if script.get("language") in ("hindi", "hinglish"):
+        # Whisper writes Hindi in Devanagari and mangles romanized Hinglish, so the captions use the script's
+        # own words, timed inside each scene's measured audio span.
+        words = script_captions(texts, scenes)
+    else:
+        lang = language_from_voice(voice)
+        words = transcribe_words(narration, whisper_model, device, lang)
 
     write_json(out_dir / "captions.json", words)
     timing = {
